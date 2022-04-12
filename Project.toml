@@ -1,0 +1,9 @@
+name = "Parareal"
+uuid = "ec7dba0e-dedf-450c-848f-b594201b46be"
+authors = ["Alexius Wadell <awadell@gmail.com>"]
+version = "0.0.1"
+
+[deps]
+DiffEqBase = "2b5f629d-d688-5b77-993f-72d75c75574e"
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
