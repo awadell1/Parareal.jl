@@ -81,11 +81,11 @@ For testing at large thread counts, I plan on either leverage the [Bridges2 RM-m
 
 - 75% Goal: Functional Parareal solver if generalizing to multi-grid provides poor scaling
 - 100% Goal: Functional MGRIT solver
-- 125% Goal: Functional MGRIT solver with dynamic trade off between in-time and in-differential parallelism
+- 125% Goal: Functional MGRIT solver with dynamic trade-off between in-time and in-differential parallelism
 
 ## Platform Choice
 
-[Julia] is fantastic language for scientific computing with a [fanstatic ecosystem](https://www.stochasticlifestyle.com/comparison-differential-equation-solver-suites-matlab-r-julia-python-c-fortran/) for solving differential equations.
+[Julia] is fantastic language for scientific computing with a [fantastic ecosystem](https://www.stochasticlifestyle.com/comparison-differential-equation-solver-suites-matlab-r-julia-python-c-fortran/) for solving differential equations.
 In my research (Modeling Battery Dynamics with Scientific Machine Learning), it is my primary language of development due to it's speed, dynamism and multiple dispatch abilities.
 Thus from a learning perspective applying the concept from [class](https://www.cs.cmu.edu/afs/cs/academic/class/15418-s22/www/index.html) to [Julia] is key.
 
