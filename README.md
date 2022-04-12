@@ -81,17 +81,90 @@ For testing at large thread counts, I plan on either leverage the [Bridges2 RM-m
 
 - 75% Goal: Functional Parareal solver if generalizing to multi-grid provides poor scaling
 - 100% Goal: Functional MGRIT solver
-- 125% Goal: Functional MGRIT solver with dynamic trade off between in-time and in-differential parallelism
+- 125% Goal: Functional MGRIT solver with dynamic trade-off between in-time and in-differential parallelism
 
 ## Platform Choice
 
-[Julia] is fantastic language for scientific computing with a [fanstatic ecosystem](https://www.stochasticlifestyle.com/comparison-differential-equation-solver-suites-matlab-r-julia-python-c-fortran/) for solving differential equations.
+[Julia] is fantastic language for scientific computing with a [fantastic ecosystem](https://www.stochasticlifestyle.com/comparison-differential-equation-solver-suites-matlab-r-julia-python-c-fortran/) for solving differential equations.
 In my research (Modeling Battery Dynamics with Scientific Machine Learning), it is my primary language of development due to it's speed, dynamism and multiple dispatch abilities.
 Thus from a learning perspective applying the concept from [class](https://www.cs.cmu.edu/afs/cs/academic/class/15418-s22/www/index.html) to [Julia] is key.
 
 Machine-wise, running code faster on my personal machine has an immediate impact on my productivity, while testing on more powerful machines (i.e. [Arjuna]) be useful for benchmarking (It's a brand new machine) and my research goals.
 
-## References
+## Milestone Update
+
+Initial implementation of Parareal using Julia has been completed, and testing shows that it is comparable to the reference Runge-Kutta 4th order solver.
+Benchmarking suggests that allocations are limiting performance, and are likely the primary bottleneck (See below).
+Overall, I think progress is on track for presenting a small demo during the poster sessions and graphs of scaling as a function of problem size / work partitioning.
+An updated schedule is provided below for reference.
+
+I am concerned that my initial 125% goal is not feasible (Discussion below), and plan to pivot towards using GPUs to hit the core counts needed to beat out in-differential parallelism.
+
+### Threaded Solution with 8 threads
+
+```julia
+julia> @benchmark solve!($integrator)
+BenchmarkTools.Trial: 56 samples with 1 evaluation.
+ Range (min … max):  82.123 ms … 102.261 ms  ┊ GC (min … max): 0.00% … 11.73%
+ Time  (median):     87.820 ms               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   90.104 ms ±   5.794 ms  ┊ GC (mean ± σ):  3.75% ±  5.27%
+
+        ▅   ▂ ▂▂█     ▂
+  ▅▅▁▁█▁█▅▁██▅███▅▅▅█▅█▅▅▅▁▁▁▁▁▅▁▁▁▁▁▅▁▅▁▁▁▁██▁█▅▅▁▅▁█▁▅▁▁▁▁▅▅ ▁
+  82.1 ms         Histogram: frequency by time          102 ms <
+
+ Memory estimate: 48.17 MiB, allocs estimate: 916475.
+```
+
+### Reference Implementation provided by [DifferentialEquations.jl][DiffEq.jl]
+
+```julia
+julia> @benchmark solve!($integrator_ref)
+BenchmarkTools.Trial: 10000 samples with 952 evaluations.
+ Range (min … max):  92.043 ns … 129.026 ns  ┊ GC (min … max): 0.00% … 0.00%
+ Time  (median):     92.481 ns               ┊ GC (median):    0.00%
+ Time  (mean ± σ):   92.824 ns ±   1.350 ns  ┊ GC (mean ± σ):  0.00% ± 0.00%
+
+    ▃█▆▁                    ▃▃                                 ▁
+  ▇█████▇▅▆▅▄▅▄▄▅▇▇▇▅▄▅▃▃▄▅▄██▆▆▆▅▅▄▄▅▃▄▄▅▄▅▆▄▅▄▄▃▄▄▃▁▅▄▅▄▅▅▆▅ █
+  92 ns         Histogram: log(frequency) by time      99.4 ns <
+
+ Memory estimate: 0 bytes, allocs estimate: 0.
+```
+
+Allocations are currently due to the `reinit` call within `solve!`, which appears to trigger significant allocations.
+Presently, I've been able to use `set_ut!` for the coarse integrator, but this won't work for the fine integrators, where we **need** to save additional state information (i.e. `∂u`).
+
+Further, given the notes in the [MGRIT paper][MGRIT] regarding scaling, I suspect I will need a very high core count to beat out spatial partitioning.
+Although, for a smaller systems the cross-over point should occur at a lower processor counts.
+
+![MGRIT Scaling](docs/assets/MGRIT_scaling.png)
+> Runtimes as a function of processors for a 1,024^3 x 16,386 domain with varying number of processors.
+> For small problems, the cross-over point occurs at lower (but still large) processor counts.
+> Note: These are theoretical runtimes presented in the paper.
+
+### Goal Progress
+
+- [x] Functional Parareal solver (75% Goal)
+- [ ] Functional MGRIT solver (100% Goal)
+- [ ] MGRIT solver with dynamic trade-off between in-time and in-differential parallelism (125% Goal)
+
+I am on track for delivering my 100% goal of an MGRIT solver, I am concerned about reaching the 125% goal.
+Primarily, I have not found anything in the literature regarding dynamically trading-off in-time and in-differential parallelism.
+Additionally, on further review of the [MGRIT paper][MGRIT], I believe I will need a large (~1k) processors to beat out spatial partitioning for a 128^3 spatial domain.
+To that end, I want to move towards using GPUs to accelerate the fine solvers, with the hope that number of execution cores will be sufficient to beat out spatial partitioning.
+
+## Schedule
+
+- [x] Initial implementation of Parareal using Julia (1/11)
+- [ ] Build out benchmarking suite and eliminate allocations in the fine solvers (4/14)
+- [ ] Implement MGRIT solver (4/18)
+- [ ] Initial GPU Accelerated Implementation (4/21)
+- [ ] Refined GPU Accelerated Implementation (4/25)
+- [ ] Initial Benchmark on Nvidia A100s vs. AMD EPYC CPUs (4/27)
+- [ ] Document in Report (4/29)
+- [ ] Presentation of final results (5/5)
+### References
 
 - [A Multigrid-in-Time Algorithm for Solving Evolving Equation in Parallel][MGRIT]
 - [A "parareal" in time discretication of PDE's][Parareal]
