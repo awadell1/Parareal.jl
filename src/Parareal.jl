@@ -5,6 +5,10 @@ export PararealAlgo, PararealIntegrator
 using OrdinaryDiffEq
 using DiffEqBase
 
+# Enable Timing
+using TimerOutputs
+const to = TimerOutput()
+
 struct PararealAlgo{FineIntegrator, CoarseIntegrator} <: OrdinaryDiffEq.OrdinaryDiffEqAlgorithm
     intervals::Int
     fine::FineIntegrator
@@ -29,7 +33,11 @@ function PararealIntegrator{IIP, uType, tType}(u, t, fine::Vector{F}, coarse::C,
 end
 
 function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlgo;
-    dt_coarse = 0.1, dtmin_coarse = 0.1, save_start=true, save_end=true, save_intervals=true, kwargs...) where {uType, tType, IIP}
+    coarse_steps = 1, coarse_maxsteps = 20, dt_coarse=nothing,
+    save_start=true, save_end=true, save_intervals=false,
+    abstol=1e-6, reltol=1e-3,
+    kwargs...
+) where {uType, tType, IIP}
 
     # Initialize the time, state and update vectors
     u = Vector{uType}(undef, alg.intervals+1)
@@ -37,8 +45,15 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlg
     t = range(first(prob.tspan), last(prob.tspan); length=alg.intervals+1)
 
     # Setup coarse integrator
+    coarse_step_size = minimum(diff(t))
+    if dt_coarse === nothing
+        dt_coarse = coarse_step_size / coarse_steps;
+        dtmin_coarse = coarse_step_size / coarse_maxsteps;
+    else
+        dtmin_coarse = dt_coarse * coarse_steps / coarse_maxsteps
+    end
     coarse = init(prob, alg.coarse;
-        dt=dt_coarse,
+        dt=dtmin_coarse,
         dtmin=dtmin_coarse,
         force_dtmin=true,
         tstops=(),
@@ -57,14 +72,23 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlg
         init(prob_interval, alg.fine;
             save_start= i==1 ? save_start : save_intervals,
             save_end = i == alg.intervals ? save_end : save_intervals,
+            save_everystep=false, dense=false,
             kwargs...
         )
     end
 
     # Setup options
-    opts = (; dt_coarse, dtmin_coarse, kwargs...)
+    opts = (; dt_coarse, dtmin_coarse, abstol, reltol, kwargs...)
 
     PararealIntegrator{IIP, uType, eltype(t)}(u, t, fine, coarse, opts)
+end
+
+function accumulate_destats!(r, x)
+    for p in propertynames(r)
+        n = getproperty(r, p) + getproperty(x, p)
+        setproperty!(r, p, n)
+    end
+    return r
 end
 
 function DiffEqBase.__solve(prob::ODEProblem, alg::PararealAlgo; kwargs...)
@@ -74,18 +98,24 @@ function DiffEqBase.__solve(prob::ODEProblem, alg::PararealAlgo; kwargs...)
     solve!(integrator)
 
     # Collect results
-    ntsteps = sum(x -> length(x.sol), integrator.fine)
-    ts = similar(integrator.t, ntsteps)
-    trace = similar(integrator.u, ntsteps)
-    tdx = 1
-    for i in 1:intervals
-        n = length(integrator.fine[i].sol)
-        ts[tdx:tdx+n-1] .= integrator.fine[i].sol.t
-        trace[tdx:tdx+n-1] .= integrator.fine[i].sol.u
-        tdx += n
+    destats = deepcopy(integrator.coarse.destats)
+    @timeit_debug to "Collect Results" begin
+        ntsteps = sum(x -> length(x.sol), integrator.fine)
+        ts = similar(integrator.t, ntsteps)
+        trace = similar(integrator.u, ntsteps)
+        tdx = 1
+        for i in 1:intervals
+            n = length(integrator.fine[i].sol)
+            ts[tdx:tdx+n-1] .= integrator.fine[i].sol.t
+            trace[tdx:tdx+n-1] .= integrator.fine[i].sol.u
+            tdx += n
+
+            # Accumulate destats
+            accumulate_destats!(destats, integrator.fine[i].destats)
+        end
     end
 
-    sol = DiffEqBase.build_solution(prob,alg,ts,trace)
+    sol = DiffEqBase.build_solution(prob,alg,ts,trace; destats)
 
     return sol
 end
@@ -123,22 +153,34 @@ function DiffEqBase.solve!(integrator::PararealIntegrator)
     n_intervals = length(integrator.fine)
     for k in 1:n_intervals
         # Update fine integrators
-        for i in 1:n_intervals
-            F = integrator.fine[i]
-            u = integrator.u
-            t = integrator.t
-            reinit!(F, u[i]; t0=t[i])
-            solve!(F)
-            integrator.u_update[i] = F.u - u[i+1]
+        @timeit_debug to "Update fine" begin
+            Threads.@threads for i in 1:n_intervals
+                @inbounds F = integrator.fine[i]
+                @inbounds u0 = integrator.u[i]
+                @inbounds t0 = integrator.t[i]
+                @inbounds tf = integrator.t[i+1]
+
+                # Update fine integrator
+                DiffEqBase.set_ut!(F, u0, t0)
+
+                reinit!(F, u0; t0, tf, erase_sol=true, reset_dt=false)
+                solve!(F)
+
+                # Compute Update
+                @inbounds integrator.u_update[i] = F.u - integrator.u[i+1]
+            end
         end
 
         # Update coarse integrator
-        update_coarse!(integrator)
+        @timeit_debug to "Update coarse" begin
+            update_coarse!(integrator)
+        end
 
         # Check for convergence
         u_update = integrator.u_update
-        u_zero = zero(first(u_update))
-        all(x -> isapprox(x, u_zero; rtol=1e-3, atol=1e-6), u_update) && break
+        e = sum(x -> sum(x.^2), u_update)
+        (; reltol, abstol) = integrator.opts
+        isapprox(e, 0; rtol=reltol, atol=abstol) && break
     end
 
     return nothing
