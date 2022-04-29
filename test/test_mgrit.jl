@@ -80,4 +80,20 @@ end
     c_ref = deepcopy([integrator.u[1][3]])
     @test all(integrator.u[1][3:2:end] .== c_ref)   # C-points are identical after first
     @test all(integrator.u[1][2:2:end] .== f_ref)   # F-points are unchanged
+
+    # Now finish the FCF cycle, inject 1 level down, and FCF there
+    Parareal.f_relax!(integrator, 1) # One more f-relaxation
+
+    # Inject to next level and perform FCF cycle
+    Parareal.inject!(integrator, 1)
+    Parareal.f_relax!(integrator, 2)
+    Parareal.c_relax!(integrator, 2)
+    Parareal.f_relax!(integrator, 2)
+
+    u_lvl = deepcopy(integrator.u[1])
+    u_next = deepcopy(integrator.u[2])
+    Parareal.refine!(integrator, 1)
+    @test integrator.u[2] == u_next # The next level is unchanged
+    @test all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
+    @test all(integrator.u[1][3:2:end] .!== u_next) # But it not the same as the previous level
 end

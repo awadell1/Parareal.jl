@@ -101,11 +101,11 @@ end
 function f_relax!(integrator, level)
     m = integrator.m
     integrator.t
-    nt = length(integrator.t)
+    nt = length(integrator.u[level])
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         @inbounds Φ = integrator.pool[Threads.threadid()]
 
@@ -122,7 +122,6 @@ function f_relax!(integrator, level)
             @inbounds dt = t[i+1] - Φ.t
             step!(Φ, dt)
             @inbounds u_seg[i] .= Φ.u
-
         end
     end
     return nothing
@@ -131,11 +130,11 @@ end
 function c_relax!(integrator, level)
     m = integrator.m
     integrator.t
-    nt = length(integrator.t)
+    nt = length(integrator.u[level])
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -182,5 +181,34 @@ function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     @inbounds t0 = t[sdx]
     @inbounds tf = t[edx]
     range(t0, tf; step=dt)
+end
+
+function inject!(integrator::ThreadedIntegrator, level::Integer)
+    # Get the state and check that level is valid
+    u = integrator.u
+    m = integrator.m
+    @assert level+1 <= length(u)
+
+    # Inject this level into the next
+    @inbounds u_lvl = u[level]
+    @inbounds u_next = u[level+1]
+    cdx = range(m+1; length=length(u_next), step=m)
+    @inbounds u_next .= view(u_lvl, cdx)
+
+    return nothing
+end
+
+function refine!(integrator::ThreadedIntegrator, level::Integer)
+    # Get the state and check that level is valid
+    u = integrator.u
+    m = integrator.m
+    @assert level+1 <= length(u)
+
+    # Refine this level into the next
+    @inbounds u_lvl = u[level]
+    @inbounds u_next = u[level+1]
+    cdx = range(m+1; length=length(u_next), step=m)
+    @inbounds u_lvl[cdx] .= u_next
+    return nothing
 end
 

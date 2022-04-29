@@ -14,7 +14,11 @@ suite["timespan"] = @benchmarkable Parareal.timespan($i, 1, 1)
 
 suite["f_relax!"] = BenchmarkGroup()
 suite["c_relax!"] = BenchmarkGroup()
+suite["inject!"] = BenchmarkGroup()
+suite["refine!"] = BenchmarkGroup()
 for dt in [1e-1, 1e-2, 5e-3]
     suite["f_relax!"][dt] = @benchmarkable Parareal.f_relax!($(setup(dt)), 1)
     suite["c_relax!"][dt] = @benchmarkable Parareal.c_relax!($(setup(dt)), 1)
+    suite["inject!"][dt] = @benchmarkable Parareal.inject!($(setup(dt)), 1)
+    suite["refine!"][dt] = @benchmarkable Parareal.inject!($(setup(dt)), 1)
 end
