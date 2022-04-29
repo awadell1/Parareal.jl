@@ -35,7 +35,7 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
         push!(u_cache, u_lvl)
         nt = floor(Int, nt/m)
         if nt == 0
-            levels = i-1
+            levels = i
             break
         end
     end
@@ -77,13 +77,13 @@ end
 
 function perform_cycle!(integrator, level, iteration)
     # At the coarsest level -> Solve forward
+    max_level = integrator.opts[:levels]
     if level == max_level
         forward_solve!(integrator)
         return nothing
     end
 
     # At and intermediate level -> Perform FCF Cycle
-    max_level = integrator.opts[:max]
     level > 1 && f_relax!(integrator, level)
     c_relax!(integrator, level)
     f_relax!(integrator, level)
@@ -107,21 +107,21 @@ function f_relax!(integrator, level)
     n_c_regions = floor(Int, nt/m)
     Threads.@threads for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
-        @inbounds Φ = integrator.pool[Threads.threadid()]
+        Φ = integrator.pool[Threads.threadid()]
 
         # Index of c-point to integrate from
         i = (cdx-1)*m + 1
-        @inbounds u0 = i == 1 ? integrator.u[1][i] : integrator.u[level][i]
+        u0 = i == 1 ? integrator.u[1][i] : integrator.u[level][i]
         t = timespan(integrator, level, cdx)
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t), reinit_cache=true)
+        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
         DiffEqBase.set_proposed_dt!(Φ, step(t))
 
         ## Update all F-points in current segment
-        @inbounds u_seg = @view integrator.u[level][i+1:i+m-1]
+        u_seg = @view integrator.u[level][i+1:i+m-1]
         for i in 1:m-1
-            @inbounds dt = t[i+1] - Φ.t
+            dt = t[i+1] - Φ.t
             step!(Φ, dt)
-            @inbounds u_seg[i] .= Φ.u
+            u_seg[i] .= Φ.u
         end
     end
     return nothing
@@ -142,12 +142,31 @@ function c_relax!(integrator, level)
         fdx = level == 1 ? cdx*m : cdx*m-1
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, cdx)[end-1:end]
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t), reinit_cache=true)
+        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
         DiffEqBase.set_proposed_dt!(Φ, step(t))
 
         # Update c-point with the last f-point
         step!(Φ)
-        @inbounds integrator.u[level][fdx+1] .= Φ.u
+        integrator.u[level][fdx+1] .= Φ.u
+    end
+    return nothing
+end
+
+function forward_solve!(integrator::ThreadedIntegrator)
+    Φ = first(integrator.pool)
+    u0 = integrator.u[1][1]
+    m = integrator.m
+    max_level = integrator.opts[:levels]
+    t = timespan(integrator, max_level, 1)
+    DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
+    DiffEqBase.set_proposed_dt!(Φ, step(t))
+
+    # Forward solve over the entire domain
+    u_seg = @view integrator.u[max_level][:]
+    for i in 1:m-1
+        dt = t[i+1] - Φ.t
+        step!(Φ, dt)
+        u_seg[i] .= Φ.u
     end
     return nothing
 end
@@ -160,11 +179,13 @@ Return the timesteps for the between c-point `cdx` and `cdx+1` on `level`
 function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     # Get the state and check that level and cdx are valid
     u = integrator.u
-    @assert level < length(u)
-    @assert 1 <= cdx && cdx <= length(u[level+1])
+    m = integrator.m
+    @assert level <= length(u)
+    nt = length(u[level])
+    nt -= level == 1 ? 1 : 0
+    @assert 1 <= cdx && cdx <= ceil(Int, nt/m)
 
     # Compute the effect coarsening of the current level
-    m = integrator.m
     m_eff = m^level
 
     # Compute the start and stop indices of the current segment
@@ -178,8 +199,8 @@ function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     dt *= level == 1 ? 1 : m * (level-1)
 
     # Construct range from start and stop indices
-    @inbounds t0 = t[sdx]
-    @inbounds tf = t[edx]
+    t0 = t[sdx]
+    tf = t[edx]
     range(t0, tf; step=dt)
 end
 
@@ -190,10 +211,11 @@ function inject!(integrator::ThreadedIntegrator, level::Integer)
     @assert level+1 <= length(u)
 
     # Inject this level into the next
-    @inbounds u_lvl = u[level]
-    @inbounds u_next = u[level+1]
-    cdx = range(m+1; length=length(u_next), step=m)
-    @inbounds u_next .= view(u_lvl, cdx)
+    u_lvl = u[level]
+    u_next = u[level+1]
+    sdx = level == 1 ? m+1 : m
+    cdx = range(sdx; length=length(u_next), step=m)
+    u_next .= view(u_lvl, cdx)
 
     return nothing
 end
@@ -204,11 +226,12 @@ function refine!(integrator::ThreadedIntegrator, level::Integer)
     m = integrator.m
     @assert level+1 <= length(u)
 
-    # Refine this level into the next
-    @inbounds u_lvl = u[level]
-    @inbounds u_next = u[level+1]
-    cdx = range(m+1; length=length(u_next), step=m)
-    @inbounds u_lvl[cdx] .= u_next
+    # Refine this level into the nextLO
+    u_lvl = u[level]
+    u_next = u[level+1]
+    sdx = level == 1 ? m+1 : m
+    cdx = range(sdx; length=length(u_next), step=m)
+    u_lvl[cdx] .= u_next
     return nothing
 end
 
