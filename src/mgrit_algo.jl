@@ -7,14 +7,15 @@ const SteppedTimeRange{T} = StepRangeLen{T, Base.TwicePrecision{T}, Base.TwicePr
 
 struct ThreadedIntegrator{ILP, uType, tType, Integrator, O} <: DiffEqBase.AbstractODEIntegrator{MGRIT,ILP,uType,tType}
     u::Vector{Vector{uType}}    # State at each time step for the level
+    g::Vector{Vector{uType}}    # Residual at each time step for the level
     t::SteppedTimeRange{tType}  # Times at each time step for the level
     m::Int                      # Temporal Coarsening Factor
     pool::Vector{Integrator}    # Pool of integrators for each threads
     opts::O                     # Integrator Options
 end
 
-ThreadedIntegrator{ILP, uType, tType}(u, t, m, pool::Vector{Integrator}, opts::O) where {ILP, uType, tType, Integrator, O} =
-    ThreadedIntegrator{ILP, uType, tType, Integrator, O}(u, t, m, pool, opts)
+ThreadedIntegrator{ILP, uType, tType}(u, g, t, m, pool::Vector{Integrator}, opts::O) where {ILP, uType, tType, Integrator, O} =
+    ThreadedIntegrator{ILP, uType, tType, Integrator, O}(u, g, t, m, pool, opts)
 
 function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     dt = 0.1,
@@ -29,10 +30,16 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     # Allocate the cache for storing the solution state
     nt = length(t)
     u0 = prob.u0
-    u_cache = Vector{Vector{uType}}()
+    u = Vector{Vector{uType}}()
+    g = Vector{Vector{uType}}()
     for i = 1:levels
         u_lvl = map(_ -> deepcopy(u0), 1:nt)
-        push!(u_cache, u_lvl)
+        push!(u, u_lvl)
+        if i == 1
+            push!(g, deepcopy(u_lvl[1:end-1]))
+        else
+            push!(g, deepcopy(u_lvl))
+        end
         nt = floor(Int, nt/m)
         if nt == 0
             levels = i
@@ -55,7 +62,7 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     end
     opts = (; abstol, threads, levels)
 
-    return ThreadedIntegrator{ILP, uType, eltype(t)}(u_cache, t, m, integrator_pool, opts)
+    return ThreadedIntegrator{ILP, uType, eltype(t)}(u, g, t, m, integrator_pool, opts)
 end
 
 function DiffEqBase.solve(integrator::ThreadedIntegrator)
@@ -74,6 +81,13 @@ function DiffEqBase.solve(integrator::ThreadedIntegrator)
     return integrator.t, integrator.u
 end
 
+@inline function get_state(integrator, level, i)
+    if level == 1 || i == 1
+        return integrator.u[1][i]
+    else
+        return integrator.u[level][i-1]
+    end
+end
 
 function perform_cycle!(integrator, level, iteration)
     # At the coarsest level -> Solve forward
@@ -91,9 +105,11 @@ function perform_cycle!(integrator, level, iteration)
     # Inject the current solution on to the next level
     # then solve that level, and use it' to update this
     # level's solution
-    inject!(integrator, level)
+    #inject!(integrator, level)
     perform_cycle!(integrator, level + 1, iteration)
-    refine!(integrator, level)
+    #refine!(integrator, level)
+
+    f_relax!(integrator, level)
 
     return nothing
 end
@@ -102,28 +118,36 @@ function f_relax!(integrator, level)
     m = integrator.m
     integrator.t
     nt = length(integrator.u[level])
+    nt += level == 1 ? 0 : 1
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    Threads.@threads for cdx in 1:n_c_regions
+    for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
         # Index of c-point to integrate from
         i = (cdx-1)*m + 1
-        u0 = i == 1 ? integrator.u[1][i] : integrator.u[level][i]
+        u0 = get_state(integrator, level, i)
         t = timespan(integrator, level, cdx)
         DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
         DiffEqBase.set_proposed_dt!(Φ, step(t))
 
+        # Index of the F-points to update
+        fdx = level == 1 ? range(i+1, i+m-1) : range(i, i+m-2)
+        gdx = i:i+m-2
+
         ## Update all F-points in current segment
-        u_seg = @view integrator.u[level][i+1:i+m-1]
+        u = @view integrator.u[level][fdx]
+        g = @view integrator.g[level][gdx]
         for i in 1:m-1
             dt = t[i+1] - Φ.t
-            step!(Φ, dt)
-            u_seg[i] .= Φ.u
+            step!(Φ, dt, true)
+            @. g[i] .= u[i] - Φ.u  # Update residual
+            @. u[i] .= Φ.u    # Update solution
         end
     end
+    @info "f-relax" level integrator.u[level]
     return nothing
 end
 
@@ -134,7 +158,7 @@ function c_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    Threads.@threads for cdx in 1:n_c_regions
+    for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -143,12 +167,17 @@ function c_relax!(integrator, level)
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, cdx)[end-1:end]
         DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
-        DiffEqBase.set_proposed_dt!(Φ, step(t))
+        dt = step(t)
+        DiffEqBase.set_proposed_dt!(Φ, dt)
 
         # Update c-point with the last f-point
-        step!(Φ)
-        integrator.u[level][fdx+1] .= Φ.u
+        step!(Φ, dt, true)
+        u = integrator.u[level][fdx+1]
+        g = integrator.g[level][fdx]
+        @. g .= u - Φ.u  # Update residual
+        @. u .= Φ.u    # Update solution
     end
+    @info "c-relax" level integrator.u[level]
     return nothing
 end
 
@@ -165,7 +194,7 @@ function forward_solve!(integrator::ThreadedIntegrator)
     u_seg = @view integrator.u[max_level][:]
     for i in 1:m-1
         dt = t[i+1] - Φ.t
-        step!(Φ, dt)
+        step!(Φ, dt, true)
         u_seg[i] .= Φ.u
     end
     return nothing
@@ -210,12 +239,15 @@ function inject!(integrator::ThreadedIntegrator, level::Integer)
     m = integrator.m
     @assert level+1 <= length(u)
 
-    # Inject this level into the next
-    u_lvl = u[level]
+    # Inject the state into the next
     u_next = u[level+1]
     sdx = level == 1 ? m+1 : m
-    cdx = range(sdx; length=length(u_next), step=m)
-    u_next .= view(u_lvl, cdx)
+    u_idx = range(sdx; length=length(u_next), step=m)
+    u_next .= view(u[level], u_idx)
+
+    # Inject residual into the next level
+    g_idx = range(m, length=length(u_next), step=m)
+    integrator.g[level+1] .= @view integrator.g[level][g_idx]
 
     return nothing
 end
@@ -223,15 +255,16 @@ end
 function refine!(integrator::ThreadedIntegrator, level::Integer)
     # Get the state and check that level is valid
     u = integrator.u
+    g = integrator.g
     m = integrator.m
     @assert level+1 <= length(u)
 
-    # Refine this level into the nextLO
+    # Refine the state using the next level
     u_lvl = u[level]
     u_next = u[level+1]
     sdx = level == 1 ? m+1 : m
     cdx = range(sdx; length=length(u_next), step=m)
-    u_lvl[cdx] .= u_next
+    u[level][cdx] .+= g[level+1]
     return nothing
 end
 

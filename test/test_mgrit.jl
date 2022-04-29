@@ -98,6 +98,27 @@ end
     @test all(integrator.u[1][3:2:end] .!== u_next) # But it not the same as the previous level
 end
 
+# Repeated application of f and c relaxation should match a serial solution
+@testset "serial" begin
+    prob = ode_linear_problem()
+    integrator = init(prob, MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
+
+    @testset "level-$lvl" for lvl in 1:4
+        nt = length(integrator.u[lvl])
+        for i = 1:5
+            Parareal.f_relax!(integrator, lvl)
+            Parareal.c_relax!(integrator, lvl)
+        end
+
+        # Get reference solution and compare to serial
+        dt = 0.1
+        dt *= lvl == 1 ? 1 : 2*(lvl-1)
+        sol = solve(prob, Euler(); dt)
+        u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]
+        @test integrator.u[lvl] == u_ref
+    end
+end
+
 @testset "perform_cycle!" begin
     integrator = init(ode_linear_problem(), MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
     for i = 1:6
