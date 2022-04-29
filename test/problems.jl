@@ -5,10 +5,10 @@ using DiffEqOperators
 Linear decay from initial displacement
 """
 function ode_linear_problem()
-    linear = (u,p,t) -> (p*u)
+    linear! = (du, u, p, t) -> du .= p*u
     linear_analytic = (u0,p,t) -> u0*exp(p*t)
-    f = ODEFunction(linear, analytic=linear_analytic)
-    return ODEProblem(f, 1/2, (0.0,1.0), 1.01)
+    f = ODEFunction(linear!, analytic=linear_analytic)
+    return ODEProblem(f, [1/2], (0.0,1.0), 1.01)
 end
 
 """
