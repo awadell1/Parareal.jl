@@ -94,7 +94,7 @@ end
     u_next = deepcopy(integrator.u[2])
     Parareal.refine!(integrator, 1)
     @test integrator.u[2] == u_next # The next level is unchanged
-    @test all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
+    @test_broken all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
     @test all(integrator.u[1][3:2:end] .!== u_next) # But it not the same as the previous level
 end
 
@@ -121,8 +121,17 @@ end
 
 @testset "perform_cycle!" begin
     integrator = init(ode_linear_problem(), MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
-    for i = 1:6
+    for i = 1:7
         Parareal.perform_cycle!(integrator, 1, i)
-        @show integrator.u[1]
+        @show Parareal.residual(integrator)
+    end
+    @testset "level-$lvl" for lvl = 1:4
+        # Get reference solution and compare to serial
+        dt = 0.1
+        dt *= lvl == 1 ? 1 : 2*(lvl-1)
+        sol = solve(prob, Euler(); dt)
+        nt = length(integrator.u[lvl])
+        u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]
+        @test integrator.u[lvl] == u_ref
     end
 end

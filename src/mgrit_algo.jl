@@ -58,6 +58,8 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
             save_everystep=false,
             save_start=false,
             calck = false,
+            adaptive=false,
+            force_dtmin=true,
         )
     end
     opts = (; abstol, reltol, threads, levels, internalnorm=DiffEqBase.ODE_DEFAULT_NORM)
@@ -98,14 +100,16 @@ function perform_cycle!(integrator, level, iteration)
     end
 
     # At and intermediate level -> Perform FCF Cycle
-    level > 1 && f_relax!(integrator, level)
+    if level > 1 || iteration == 1
+        f_relax!(integrator, level)
+    end
     c_relax!(integrator, level)
     f_relax!(integrator, level)
 
     # Inject the current solution on to the next level
     # then solve that level, and use it' to update this
     # level's solution
-    #inject!(integrator, level)
+    inject!(integrator, level)
     perform_cycle!(integrator, level + 1, iteration)
     #refine!(integrator, level)
 
@@ -143,11 +147,11 @@ function f_relax!(integrator, level)
         for i in 1:m-1
             dt = t[i+1] - Φ.t
             step!(Φ, dt, true)
-            @. g[i] .= u[i] - Φ.u  # Update residual
-            @. u[i] .= Φ.u    # Update solution
+            g[i] .= u[i] - Φ.u  # Update residual
+            u[i] .= Φ.u         # Update solution
         end
     end
-    @info "f-relax" level integrator.u[level]
+    @info "f-relax" level integrator.u[level] integrator.g[level]
     return nothing
 end
 
@@ -174,10 +178,10 @@ function c_relax!(integrator, level)
         step!(Φ, dt, true)
         u = integrator.u[level][fdx+1]
         g = integrator.g[level][fdx]
-        @. g .= u - Φ.u  # Update residual
-        @. u .= Φ.u    # Update solution
+        g .= u - Φ.u    # Update residual
+        u .= Φ.u        # Update solution
     end
-    @info "c-relax" level integrator.u[level]
+    @info "c-relax" level integrator.u[level] integrator.g[level]
     return nothing
 end
 
@@ -239,15 +243,24 @@ function inject!(integrator::ThreadedIntegrator, level::Integer)
     m = integrator.m
     @assert level+1 <= length(u)
 
-    # Inject the state into the next
+    # Create views for the current level's c-point and the next level
     u_next = u[level+1]
     sdx = level == 1 ? m+1 : m
-    u_idx = range(sdx; length=length(u_next), step=m)
-    u_next .= view(u[level], u_idx)
+    nc = length(u_next)
+    u_idx = range(sdx; length=nc, step=m)
+    u_lvl = @view u[level][u_idx]
 
-    # Inject residual into the next level
-    g_idx = range(m, length=length(u_next), step=m)
-    integrator.g[level+1] .= @view integrator.g[level][g_idx]
+    # Create views of the residuals
+    g_idx = range(m, length=nc, step=m)
+    g_next = integrator.g[level+1]
+    g_lvl = @view integrator.g[level][g_idx]
+
+    # Inject the state and residual from this level into the next
+    # Use copy! instead of .= to allow user to more easily define an inplace copy
+    @inbounds @simd for i in 1:nc
+        copy!(u_next[i], u_lvl[i])
+        copy!(g_next[i], g_lvl[i])
+    end
 
     return nothing
 end
