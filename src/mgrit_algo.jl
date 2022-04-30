@@ -19,7 +19,7 @@ ThreadedIntegrator{ILP, uType, tType}(u, g, t, m, pool::Vector{Integrator}, opts
 
 function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     dt = 0.1,
-    abstol=1e-6,
+    abstol=1e-6, reltol=1e-3,
     m=2, levels=typemax(Int),
     threads=Threads.nthreads()
 ) where {uType, tType, ILP}
@@ -60,7 +60,7 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
             calck = false,
         )
     end
-    opts = (; abstol, threads, levels)
+    opts = (; abstol, reltol, threads, levels, internalnorm=DiffEqBase.ODE_DEFAULT_NORM)
 
     return ThreadedIntegrator{ILP, uType, eltype(t)}(u, g, t, m, integrator_pool, opts)
 end
@@ -266,5 +266,29 @@ function refine!(integrator::ThreadedIntegrator, level::Integer)
     cdx = range(sdx; length=length(u_next), step=m)
     u[level][cdx] .+= g[level+1]
     return nothing
+end
+
+function residual(integrator::ThreadedIntegrator{ILP, uType}) where {ILP, uType}
+    (; abstol, reltol, internalnorm) = integrator.opts
+    t = integrator.t
+
+    # Get the residual and state at the base level and check for a no-op
+    @inbounds g = integrator.g[1]
+    @inbounds u = integrator.u[1]
+    r = zero(eltype(uType))
+    isempty(g) && return r
+
+    # Loop over timesteps and compute the scaled error of the residual
+    # See: https://diffeq.sciml.ai/stable/basics/common_solver_opts/#Basic-Stepsize-Control
+    for i in 1:length(g)
+        @inbounds tc = t[i+1]   # Time of the current f/c-point
+        @inbounds uc = u[i+1]   # Solution at the current f/c-point
+        @inbounds gc = g[i]     # Residual at the current f/c-point
+        u_norm = internalnorm(uc, tc)   # Norm of the state used for reltol
+        e = internalnorm(gc, tc)        # Norm of the residual
+        es = e / (abstol + u_norm*reltol)   # Scaled error at time step
+        r = max(r, es)
+    end
+    return r
 end
 
