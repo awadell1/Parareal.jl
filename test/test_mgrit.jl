@@ -7,7 +7,7 @@ include("problems.jl")
 
 @testset "Multi-Grid Indexing" begin
     prob = ode_linear_problem()
-    integrator = init(prob, MGRIT(Euler()); m=2, levels=typemax(Int))
+    integrator = init(prob, MGRIT(Euler()))
     m = integrator.m
     @test m isa Int
     @test m > 1
@@ -16,11 +16,10 @@ include("problems.jl")
     @testset "construct" begin
         u = integrator.u
         nt = length(integrator.t)
-        @test length(u) == 4  # 4 Levels in total
+        @test length(u) == 3  # 4 Levels in total
         @test length(u[1]) == nt == 11  # 11 time steps at the finest level
         @test length(u[2]) == 5 # C-points at the first level + first c-point (constant)
         @test length(u[3]) == 2 # C-points at the second level + first c-point (constant)
-        @test length(u[4]) == 1 # C-points at the third level + first c-point (constant)
     end
 
     @testset "timespan" begin
@@ -68,7 +67,7 @@ include("problems.jl")
 end
 
 @testset "relaxation" begin
-    integrator = init(ode_linear_problem(), MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
+    integrator = init(ode_linear_problem(), MGRIT(Euler()); dt=0.1)
     Parareal.f_relax!(integrator, 1)
     c_ref = [[0.5]]
     f_ref = deepcopy([integrator.u[1][2]])
@@ -94,16 +93,16 @@ end
     u_next = deepcopy(integrator.u[2])
     Parareal.refine!(integrator, 1)
     @test integrator.u[2] == u_next # The next level is unchanged
-    @test_broken all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
+    @test all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
     @test all(integrator.u[1][3:2:end] .!== u_next) # But it not the same as the previous level
 end
 
 # Repeated application of f and c relaxation should match a serial solution
 @testset "serial" begin
     prob = ode_linear_problem()
-    integrator = init(prob, MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
+    integrator = init(prob, MGRIT(Euler()); dt=0.1)
 
-    @testset "level-$lvl" for lvl in 1:4
+    @testset "level-$lvl" for lvl in 1:3
         nt = length(integrator.u[lvl])
         for i = 1:5
             Parareal.f_relax!(integrator, lvl)
@@ -111,8 +110,7 @@ end
         end
 
         # Get reference solution and compare to serial
-        dt = 0.1
-        dt *= lvl == 1 ? 1 : 2*(lvl-1)
+        dt = 0.1 * 2^(lvl-1)
         sol = solve(prob, Euler(); dt)
         u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]
         @test integrator.u[lvl] == u_ref
@@ -120,15 +118,12 @@ end
 end
 
 @testset "perform_cycle!" begin
-    integrator = init(ode_linear_problem(), MGRIT(Euler()); m=2, levels=typemax(Int), dt=0.1)
-    for i = 1:7
-        Parareal.perform_cycle!(integrator, 1, i)
-        @show Parareal.residual(integrator)
-    end
-    @testset "level-$lvl" for lvl = 1:4
+    prob = ode_linear_problem()
+    integrator = init(prob, MGRIT(Euler()); dt=0.1)
+    solve!(integrator)
+    @testset "level-$lvl" for lvl = 1:3
         # Get reference solution and compare to serial
-        dt = 0.1
-        dt *= lvl == 1 ? 1 : 2*(lvl-1)
+        @show dt = 0.1 * 2^(lvl-1)
         sol = solve(prob, Euler(); dt)
         nt = length(integrator.u[lvl])
         u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]

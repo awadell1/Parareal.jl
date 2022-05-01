@@ -214,22 +214,17 @@ function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     u = integrator.u
     m = integrator.m
     @assert level <= length(u)
-    nt = length(u[level])
-    nt -= level == 1 ? 1 : 0
-    @assert 1 <= cdx && cdx <= ceil(Int, nt/m)
 
-    # Compute the effect coarsening of the current level
-    m_eff = m^level
+    # Compute the dt of the current level
+    t = integrator.t
+    m_dt = m^(level-1)
+    dt = step(t) * m_dt
 
     # Compute the start and stop indices of the current segment
-    t = integrator.t
-    sdx = m_eff*(cdx-1) + 1
+    m_lvl = m_dt * m
+    sdx = m_lvl*(cdx-1) + 1
     @assert sdx < length(t)
-    edx = min(length(t), sdx + m_eff)
-
-    # Scale dt by the effective coarsening
-    dt = step(t)
-    dt *= level == 1 ? 1 : m * (level-1)
+    edx = min(length(t), sdx + m_lvl)
 
     # Construct range from start and stop indices
     t0 = t[sdx]
