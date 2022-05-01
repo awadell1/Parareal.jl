@@ -4,7 +4,6 @@ using OrdinaryDiffEq
 
 include("problems.jl")
 
-
 @testset "Multi-Grid Indexing" begin
     prob = ode_linear_problem()
     integrator = init(prob, MGRIT(Euler()))
@@ -121,12 +120,6 @@ end
     prob = ode_linear_problem()
     integrator = init(prob, MGRIT(Euler()); dt=0.1)
     solve!(integrator)
-    @testset "level-$lvl" for lvl = 1:3
-        # Get reference solution and compare to serial
-        @show dt = 0.1 * 2^(lvl-1)
-        sol = solve(prob, Euler(); dt)
-        nt = length(integrator.u[lvl])
-        u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]
-        @test integrator.u[lvl] == u_ref
-    end
+    sol = solve(prob, Euler(); dt = 0.1)
+    @test integrator.u[1] == sol.u
 end
