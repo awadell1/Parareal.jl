@@ -259,7 +259,6 @@ function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     # Compute the dt of the current level
     t = integrator.t
     m_dt = m^(level-1)
-    dt = step(t) * m_dt
 
     # Compute the start and stop indices of the current segment
     m_lvl = m_dt * m
@@ -268,9 +267,7 @@ function timespan(integrator::ThreadedIntegrator, level::Integer, cdx::Integer)
     edx = min(length(t), sdx + m_lvl)
 
     # Construct range from start and stop indices
-    t0 = t[sdx]
-    tf = t[edx]
-    range(t0, tf; step=dt)
+    @inbounds t[sdx:m_dt:edx]
 end
 
 function inject!(integrator::ThreadedIntegrator, level)
