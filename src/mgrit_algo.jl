@@ -21,6 +21,7 @@ ThreadedIntegrator{ILP, uType, tType}(u, g, v, t, m, pool::Vector{Integrator}, o
 function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     dt = 0.1,
     abstol=1e-6, reltol=1e-3,
+    maxiters=missing,
     m=2, levels=typemax(Int),
     threads=Threads.nthreads()
 ) where {uType, tType, ILP}
@@ -67,22 +68,27 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
             force_dtmin=true,
         )
     end
-    opts = (; abstol, reltol, threads, levels, internalnorm=DiffEqBase.ODE_DEFAULT_NORM)
+
+    # Set Integrator Options
+    opts = (;
+        abstol, reltol, threads, levels, internalnorm=DiffEqBase.ODE_DEFAULT_NORM,
+        maxiters=ismissing(maxiters) ? length(t) : maxiters,
+    )
 
     return ThreadedIntegrator{ILP, uType, eltype(t)}(u, g, v, t, m, integrator_pool, opts)
 end
 
 function DiffEqBase.solve!(integrator::ThreadedIntegrator)
-    opts = integrator.opts
     level = 1
     iteration = 0
     converged = false
-    while !converged && iteration < 100
-        f_relax!(integrator, level)
+    (; maxiters) = integrator.opts
+
+    # Iterate until convergence or maxiters
+    while !converged && iteration <= maxiters
         perform_cycle!(integrator, level, iteration)
-        r = residual(integrator)
-        @debug "Residual: $r after iteration $iteration"
-        converged = r < 1
+        iteration += 1
+        converged = residual(integrator) < 1
     end
     return nothing
 end
