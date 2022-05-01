@@ -195,11 +195,13 @@ function forward_solve!(integrator::ThreadedIntegrator)
     DiffEqBase.set_proposed_dt!(Φ, step(t))
 
     # Forward solve over the entire domain
-    u_seg = @view integrator.u[max_level][:]
-    for i in 1:m-1
+    u = @view integrator.u[max_level][:]
+    g = @view integrator.g[max_level][:]
+    for i in 1:length(u)
         dt = t[i+1] - Φ.t
         step!(Φ, dt, true)
-        u_seg[i] .= Φ.u
+        g[i] .= Φ.u - u[i]  # Update residual
+        u[i] .= Φ.u         # Update solution
     end
     return nothing
 end
