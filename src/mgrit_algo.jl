@@ -67,20 +67,20 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, ILP}, alg::MGRIT;
     return ThreadedIntegrator{ILP, uType, eltype(t)}(u, g, t, m, integrator_pool, opts)
 end
 
-function DiffEqBase.solve(integrator::ThreadedIntegrator)
+function DiffEqBase.solve!(integrator::ThreadedIntegrator)
     opts = integrator.opts
     level = 1
     iteration = 0
-    !converged = false
+    converged = false
     while !converged && iteration < 100
         f_relax!(integrator, level)
         perform_cycle!(integrator, level, iteration)
-        residual = residual(integrator)
-        @debug "Residual: $residual after iteration $iteration"
-        converged = residual < opts.abstol
+        r = residual(integrator)
+        @debug "Residual: $r after iteration $iteration"
+        converged = r < 1
     end
 
-    return integrator.t, integrator.u
+    return integrator.t, integrator.u[1]
 end
 
 @inline function get_state(integrator, level, i)
