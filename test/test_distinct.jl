@@ -71,4 +71,10 @@ end
         @test test_distinct(integrator.g)
         @test test_distinct(integrator.v)
     end
+    @testset "perform_cycle!" begin
+        Parareal.perform_cycle!(integrator, 1, 1)
+        @test test_distinct(integrator.u)
+        @test test_distinct(integrator.g)
+        @test test_distinct(integrator.v)
+    end
 end
