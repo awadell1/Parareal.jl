@@ -70,14 +70,14 @@ end
     Parareal.f_relax!(integrator, 1)
     c_ref = [[0.5]]
     f_ref = deepcopy([integrator.u[1][2]])
-    @test all(integrator.u[1][1:2:end] .== c_ref)   # C-points are unchanged
-    @test all(integrator.u[1][2:2:end] .== f_ref)   # F-points are identical
+    @test all(integrator.u[1][1:2:end] .≈ c_ref)   # C-points are unchanged
+    @test all(integrator.u[1][2:2:end] .≈ f_ref)   # F-points are identical
 
     Parareal.c_relax!(integrator, 1)
     @test integrator.u[1][1] == c_ref[1]
     c_ref = deepcopy([integrator.u[1][3]])
-    @test all(integrator.u[1][3:2:end] .== c_ref)   # C-points are identical after first
-    @test all(integrator.u[1][2:2:end] .== f_ref)   # F-points are unchanged
+    @test all(integrator.u[1][3:2:end] .≈ c_ref)   # C-points are identical after first
+    @test all(integrator.u[1][2:2:end] .≈ f_ref)   # F-points are unchanged
 
     # Now finish the FCF cycle, inject 1 level down, and FCF there
     Parareal.f_relax!(integrator, 1) # One more f-relaxation
@@ -91,8 +91,8 @@ end
     u_lvl = deepcopy(integrator.u[1])
     u_next = deepcopy(integrator.u[2])
     Parareal.refine!(integrator, 1)
-    @test integrator.u[2] == u_next # The next level is unchanged
-    @test all(integrator.u[1][3:2:end] .== u_next) # This level matches the next level
+    @test integrator.u[2] ≈ u_next # The next level is unchanged
+    @test all(integrator.u[1][3:2:end] .≈ u_next) # This level matches the next level
     @test all(integrator.u[1][3:2:end] .!== u_next) # But it not the same as the previous level
 end
 
@@ -112,7 +112,7 @@ end
         dt = 0.1 * 2^(lvl-1)
         sol = solve(prob, Euler(); dt)
         u_ref = lvl == 1 ? sol.u : sol.u[2:nt+1]
-        @test integrator.u[lvl] == u_ref
+        @test integrator.u[lvl] ≈ u_ref
     end
 end
 
