@@ -118,7 +118,7 @@ function update_coarse!(integrator::PararealIntegrator)
     u_updates = integrator.u_update
 
     # Start from the end of the first fine integrator
-    DiffEqBase.set_ut!(coarse, first(u), first(tstops))
+    reinit!(coarse, first(u); t0=first(tstops))
     n = length(integrator.u) -1
     iter = integrator.iteration[] += 1
 
@@ -128,7 +128,7 @@ function update_coarse!(integrator::PararealIntegrator)
         step!(coarse)
         @assert coarse.t == integrator.t[i+1]
         u[i+1] = coarse.u + u_updates[i]
-        set_u!(coarse, u[i+1])
+        set_u!!(coarse, u[i+1])
     end
 
     return nothing
