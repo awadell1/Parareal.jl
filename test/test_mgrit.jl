@@ -116,8 +116,7 @@ end
     end
 end
 
-@testset "solve" begin
-    prob = ode_linear_problem()
+@testset "solve - $name" for (name, prob) in TEST_PROBLEMS
     @testset "$alg" for alg in [Euler(), RK4(), Tsit5()]
         @testset "dt = $dt" for dt in [1e-1, 1e-2, 1e-3]
             sol = solve(prob, MGRIT(alg); dt)

@@ -31,3 +31,7 @@ function heat(n=100)
     return ODEProblem(f, u_analytic.(x, 0), (0.0, 0.03))
 end
 
+TEST_PROBLEMS = Dict(
+    "ode linear" => ode_linear_problem(),
+    "heat" => heat(10),
+)
