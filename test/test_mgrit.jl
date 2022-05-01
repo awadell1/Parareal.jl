@@ -116,12 +116,23 @@ end
     end
 end
 
-@testset "solve - $name" for (name, prob) in TEST_PROBLEMS
+@testset "solve - linear" begin
+    prob = ode_linear_problem()
     @testset "$alg" for alg in [Euler(), RK4(), Tsit5()]
         @testset "dt = $dt" for dt in [1e-1, 1e-2, 1e-3]
             sol = solve(prob, MGRIT(alg); dt)
             sol_ref = solve(prob, alg; dt, adaptive=false)
             @test isapprox(sol.u, sol_ref.u; rtol=1e-3, atol=1e-6)
         end
+    end
+end
+
+@testset "solve - heat" begin
+    prob = heat(10)
+    @testset "$alg" for alg in [RK4(), Tsit5()]
+        dt = 1e-3
+        sol = solve(prob, MGRIT(alg); dt)
+        sol_ref = solve(prob, alg; dt, adaptive=false)
+        @test isapprox(sol.u, sol_ref.u; rtol=1e-3, atol=1e-6)
     end
 end
