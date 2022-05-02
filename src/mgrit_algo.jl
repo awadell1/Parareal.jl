@@ -150,7 +150,7 @@ function f_relax!(integrator, level)
         i = (cdx-1)*m + 1
         u0 = get_state(integrator, level, i)
         t = timespan(integrator, level, cdx)
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
+        set_ut!!(Φ, u0, first(t))
         DiffEqBase.set_proposed_dt!(Φ, step(t))
 
         # Index of the F-points to update
@@ -211,7 +211,7 @@ function c_relax!(integrator, level)
         fdx = level == 1 ? cdx*m : cdx*m-1
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, cdx)[end-1:end]
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
+        set_ut!!(Φ, u0, first(t))
         dt = step(t)
         DiffEqBase.set_proposed_dt!(Φ, dt)
 
