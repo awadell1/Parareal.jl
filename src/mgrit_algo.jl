@@ -371,20 +371,21 @@ function residual(integrator::ThreadedIntegrator{ILP, uType}) where {ILP, uType}
     # Get the residual and state at the base level and check for a no-op
     @inbounds g = integrator.g[1]
     @inbounds u = integrator.u[1]
-    r = zero(eltype(uType))
-    isempty(g) && return r
+    T = eltype(uType)
+    r = Threads.Atomic{T}(zero(T))
+    isempty(g) && return r[]
 
     # Loop over timesteps and compute the scaled error of the residual
     # See: https://diffeq.sciml.ai/stable/basics/common_solver_opts/#Basic-Stepsize-Control
-    @simd for i in 1:length(g)
+    @batch minbatch=64 for i in 1:length(g)
         @inbounds tc = t[i+1]   # Time of the current f/c-point
         @inbounds uc = u[i+1]   # Solution at the current f/c-point
         @inbounds gc = g[i]     # Residual at the current f/c-point
         u_norm = internalnorm(uc, tc)   # Norm of the state used for reltol
         e = internalnorm(gc, tc)        # Norm of the residual
         es = e / (abstol + u_norm*reltol)   # Scaled error at time step
-        r = max(r, es)
+        Threads.atomic_max!(r, es)
     end
-    return r
+    return r[]
 end
 
