@@ -2,8 +2,9 @@ module Parareal
 
 using OrdinaryDiffEq
 using DiffEqBase
+using LoopVectorization
 
-export PararealAlgo, PararealIntegrator
+export PararealAlgo, PararealIntegrator, MGRIT
 
 # Enable Timing
 using TimerOutputs

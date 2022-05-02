@@ -5,7 +5,7 @@ using DiffEqDevTools
 
 include("problems.jl")
 
-@testset "smoke" begin
+@testset "linear" begin
     alg = PararealAlgo(4, RK4(), RK4())
     @test alg isa PararealAlgo
 

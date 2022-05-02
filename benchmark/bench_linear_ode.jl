@@ -13,5 +13,5 @@ intergrators = Dict(
 for (k,v) in intergrators
     s = suite[k] = BenchmarkGroup()
     i = init(ode_linear_problem(), v)
-    s[1] = @benchmarkable solve(ode_linear_problem(), $v; dtmax=1e-2)
+   # s[1] = @benchmarkable solve(ode_linear_problem(), $v; dtmax=1e-2)
 end

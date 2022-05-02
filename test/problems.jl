@@ -5,10 +5,13 @@ using DiffEqOperators
 Linear decay from initial displacement
 """
 function ode_linear_problem()
-    linear = (u,p,t) -> (p*u)
+    function linear!(du, u, p, t)
+        du[1] = p*u[1]
+        return nothing
+    end
     linear_analytic = (u0,p,t) -> u0*exp(p*t)
-    f = ODEFunction(linear, analytic=linear_analytic)
-    return ODEProblem(f, 1/2, (0.0,1.0), 1.01)
+    f = ODEFunction(linear!, analytic=linear_analytic)
+    return ODEProblem(f, [1/2], (0.0,1.0), 1.01)
 end
 
 """
@@ -28,3 +31,7 @@ function heat(n=100)
     return ODEProblem(f, u_analytic.(x, 0), (0.0, 0.03))
 end
 
+TEST_PROBLEMS = Dict(
+    "ode linear" => ode_linear_problem(),
+    "heat" => heat(10),
+)
