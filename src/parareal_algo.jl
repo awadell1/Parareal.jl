@@ -151,13 +151,11 @@ function DiffEqBase.solve!(integrator::PararealIntegrator)
                 @inbounds tf = integrator.t[i+1]
 
                 # Update fine integrator
-                DiffEqBase.set_ut!(F, u0, t0)
-
                 reinit!(F, u0; t0, tf, erase_sol=true, reset_dt=false)
                 solve!(F)
 
                 # Compute Update
-                @inbounds integrator.u_update[i] = F.u - integrator.u[i+1]
+                @inbounds @. integrator.u_update[i] = F.u - integrator.u[i+1]
             end
         end
 
