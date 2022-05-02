@@ -3,6 +3,7 @@ module Parareal
 using OrdinaryDiffEq
 using DiffEqBase
 using LoopVectorization
+using Polyester
 
 export PararealAlgo, PararealIntegrator, MGRIT
 
