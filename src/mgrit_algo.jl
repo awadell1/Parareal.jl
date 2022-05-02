@@ -142,7 +142,7 @@ function f_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -160,7 +160,7 @@ function f_relax!(integrator, level)
         ## Update all F-points in current segment
         u = @view integrator.u[level][fdx]
         g = @view integrator.g[level][gdx]
-        for i in 1:m-1
+        @inbounds for i in 1:m-1
             dt = t[i+1] - Φ.t
             step!(Φ, dt, true)
             if level == 1
@@ -203,7 +203,7 @@ function c_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -250,7 +250,7 @@ function forward_solve!(integrator::ThreadedIntegrator)
 
     # Forward solve over the entire domain
     g = @view integrator.g[max_level][:]
-    for i in 1:nt
+    @inbounds for i in 1:nt
         dt = t[i+1] - Φ.t
         step!(Φ, dt, true)
         copy!(u[i], Φ.u + g[i])
@@ -300,14 +300,14 @@ function inject!(integrator::ThreadedIntegrator, level)
     g_next = @view integrator.g[level+1][:]
 
     # Update the next level's v and u
-    for i in 1:nc
+    @inbounds Threads.@threads for i in 1:nc
         copy!(v_next[i], u_lvl[i])
         copy!(u_next[i], u_lvl[i])
     end
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for i in 1:n_c_regions
+    Threads.@threads for i in 1:n_c_regions
         # Get this thread's integrator
         Φ = integrator.pool[Threads.threadid()]
 
@@ -354,11 +354,11 @@ function refine!(integrator::ThreadedIntegrator, level::Integer)
 
     # Create a view of the residuals of the next level
     u_next = @view u[level+1][:]
+    v_next = @view integrator.v[level+1][:]
 
     # Refine this level using the residuals the next level
-    for i in 1:nc
-        error = u_next[i] - u_lvl[i]
-        u_lvl[i] += error
+    @inbounds @batch minbatch=32 for i in 1:nc
+        @. u_lvl[i] += u_next[i] - v_next[i]
     end
 
     return nothing
@@ -376,7 +376,7 @@ function residual(integrator::ThreadedIntegrator{ILP, uType}) where {ILP, uType}
 
     # Loop over timesteps and compute the scaled error of the residual
     # See: https://diffeq.sciml.ai/stable/basics/common_solver_opts/#Basic-Stepsize-Control
-    for i in 1:length(g)
+    @simd for i in 1:length(g)
         @inbounds tc = t[i+1]   # Time of the current f/c-point
         @inbounds uc = u[i+1]   # Solution at the current f/c-point
         @inbounds gc = g[i]     # Residual at the current f/c-point
