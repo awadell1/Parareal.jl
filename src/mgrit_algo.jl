@@ -182,6 +182,20 @@ function set_u!!(Φ::OrdinaryDiffEq.ODEIntegrator, u)
     return nothing
 end
 
+"""
+    set_ut!!(Φ::OrdinaryDiffEq.ODEIntegrator, u, t)
+
+Reset the integrator `Φ` to the given state `u` and time `t`
+Effectively, a `reinit!` call, but with zero allocations, at the cost of only supporting
+a subset of integrator algorithms. Does support Euler, RK4, Tsit5
+"""
+function set_ut!!(Φ::OrdinaryDiffEq.ODEIntegrator, u, t)
+    set_u!!(Φ, u)
+    DiffEqBase.set_t!(Φ, t)
+    terminate!(Φ)
+    return nothing
+end
+
 function c_relax!(integrator, level)
     m = integrator.m
     integrator.t
@@ -231,7 +245,7 @@ function forward_solve!(integrator::ThreadedIntegrator)
 
     # Reinit the integrator for the last level
     Φ = first(integrator.pool)
-    DiffEqBase.reinit!(Φ, u0; t0, tf=last(t))
+    set_ut!!(Φ, u0, t0)
     DiffEqBase.set_proposed_dt!(Φ, dt)
 
     # Forward solve over the entire domain
@@ -301,7 +315,7 @@ function inject!(integrator::ThreadedIntegrator, level)
         fdx = level == 1 ? i*m : i*m-1
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, i)
-        DiffEqBase.reinit!(Φ, u0; t0=t[end-1], tf=last(t))
+        set_ut!!(Φ, u0, t[end-1])
         dt = step(t)
         DiffEqBase.set_proposed_dt!(Φ, dt)
         step!(Φ, dt, true)
@@ -311,7 +325,7 @@ function inject!(integrator::ThreadedIntegrator, level)
         u0 = get_state(integrator, level+1, i)
         t0 = first(t)
         tf = last(t)
-        DiffEqBase.reinit!(Φ, u0; t0, tf)
+        set_ut!!(Φ, u0, t0)
         dt = tf - t0
         DiffEqBase.set_proposed_dt!(Φ, dt)
         step!(Φ, dt, true)
