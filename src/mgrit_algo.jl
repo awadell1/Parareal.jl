@@ -142,7 +142,7 @@ function f_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    Threads.@threads for cdx in 1:n_c_regions
+    Threads.@threads :static for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -203,7 +203,7 @@ function c_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    Threads.@threads for cdx in 1:n_c_regions
+    Threads.@threads :static for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
