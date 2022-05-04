@@ -63,6 +63,7 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlg
             save_start= i==1 ? save_start : save_intervals,
             save_end = i == alg.intervals ? save_end : save_intervals,
             save_everystep=false, dense=false,
+            adaptive=false,
             kwargs...
         )
     end
