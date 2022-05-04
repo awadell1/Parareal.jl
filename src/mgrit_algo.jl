@@ -142,7 +142,7 @@ function f_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads :static for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -150,7 +150,7 @@ function f_relax!(integrator, level)
         i = (cdx-1)*m + 1
         u0 = get_state(integrator, level, i)
         t = timespan(integrator, level, cdx)
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
+        set_ut!!(Φ, u0, first(t))
         DiffEqBase.set_proposed_dt!(Φ, step(t))
 
         # Index of the F-points to update
@@ -160,7 +160,7 @@ function f_relax!(integrator, level)
         ## Update all F-points in current segment
         u = @view integrator.u[level][fdx]
         g = @view integrator.g[level][gdx]
-        for i in 1:m-1
+        @inbounds for i in 1:m-1
             dt = t[i+1] - Φ.t
             step!(Φ, dt, true)
             if level == 1
@@ -182,6 +182,20 @@ function set_u!!(Φ::OrdinaryDiffEq.ODEIntegrator, u)
     return nothing
 end
 
+"""
+    set_ut!!(Φ::OrdinaryDiffEq.ODEIntegrator, u, t)
+
+Reset the integrator `Φ` to the given state `u` and time `t`
+Effectively, a `reinit!` call, but with zero allocations, at the cost of only supporting
+a subset of integrator algorithms. Does support Euler, RK4, Tsit5
+"""
+function set_ut!!(Φ::OrdinaryDiffEq.ODEIntegrator, u, t)
+    set_u!!(Φ, u)
+    DiffEqBase.set_t!(Φ, t)
+    terminate!(Φ)
+    return nothing
+end
+
 function c_relax!(integrator, level)
     m = integrator.m
     integrator.t
@@ -189,7 +203,7 @@ function c_relax!(integrator, level)
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for cdx in 1:n_c_regions
+    Threads.@threads :static for cdx in 1:n_c_regions
         # Re-initialize the integrator for integrating from the `id` c-point to the next c-point
         Φ = integrator.pool[Threads.threadid()]
 
@@ -197,7 +211,7 @@ function c_relax!(integrator, level)
         fdx = level == 1 ? cdx*m : cdx*m-1
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, cdx)[end-1:end]
-        DiffEqBase.reinit!(Φ, u0; t0=first(t), tf=last(t))
+        set_ut!!(Φ, u0, first(t))
         dt = step(t)
         DiffEqBase.set_proposed_dt!(Φ, dt)
 
@@ -231,12 +245,12 @@ function forward_solve!(integrator::ThreadedIntegrator)
 
     # Reinit the integrator for the last level
     Φ = first(integrator.pool)
-    DiffEqBase.reinit!(Φ, u0; t0, tf=last(t))
+    set_ut!!(Φ, u0, t0)
     DiffEqBase.set_proposed_dt!(Φ, dt)
 
     # Forward solve over the entire domain
     g = @view integrator.g[max_level][:]
-    for i in 1:nt
+    @inbounds for i in 1:nt
         dt = t[i+1] - Φ.t
         step!(Φ, dt, true)
         copy!(u[i], Φ.u + g[i])
@@ -286,14 +300,14 @@ function inject!(integrator::ThreadedIntegrator, level)
     g_next = @view integrator.g[level+1][:]
 
     # Update the next level's v and u
-    for i in 1:nc
+    @inbounds Threads.@threads for i in 1:nc
         copy!(v_next[i], u_lvl[i])
         copy!(u_next[i], u_lvl[i])
     end
 
     # Parallelize over regions of F-points
     n_c_regions = floor(Int, nt/m)
-    for i in 1:n_c_regions
+    Threads.@threads for i in 1:n_c_regions
         # Get this thread's integrator
         Φ = integrator.pool[Threads.threadid()]
 
@@ -301,7 +315,7 @@ function inject!(integrator::ThreadedIntegrator, level)
         fdx = level == 1 ? i*m : i*m-1
         u0 = integrator.u[level][fdx]
         t = timespan(integrator, level, i)
-        DiffEqBase.reinit!(Φ, u0; t0=t[end-1], tf=last(t))
+        set_ut!!(Φ, u0, t[end-1])
         dt = step(t)
         DiffEqBase.set_proposed_dt!(Φ, dt)
         step!(Φ, dt, true)
@@ -311,7 +325,7 @@ function inject!(integrator::ThreadedIntegrator, level)
         u0 = get_state(integrator, level+1, i)
         t0 = first(t)
         tf = last(t)
-        DiffEqBase.reinit!(Φ, u0; t0, tf)
+        set_ut!!(Φ, u0, t0)
         dt = tf - t0
         DiffEqBase.set_proposed_dt!(Φ, dt)
         step!(Φ, dt, true)
@@ -340,11 +354,11 @@ function refine!(integrator::ThreadedIntegrator, level::Integer)
 
     # Create a view of the residuals of the next level
     u_next = @view u[level+1][:]
+    v_next = @view integrator.v[level+1][:]
 
     # Refine this level using the residuals the next level
-    for i in 1:nc
-        error = u_next[i] - u_lvl[i]
-        u_lvl[i] += error
+    @inbounds @batch minbatch=32 for i in 1:nc
+        @. u_lvl[i] += u_next[i] - v_next[i]
     end
 
     return nothing
@@ -357,20 +371,21 @@ function residual(integrator::ThreadedIntegrator{ILP, uType}) where {ILP, uType}
     # Get the residual and state at the base level and check for a no-op
     @inbounds g = integrator.g[1]
     @inbounds u = integrator.u[1]
-    r = zero(eltype(uType))
-    isempty(g) && return r
+    T = eltype(uType)
+    r = Threads.Atomic{T}(zero(T))
+    isempty(g) && return r[]
 
     # Loop over timesteps and compute the scaled error of the residual
     # See: https://diffeq.sciml.ai/stable/basics/common_solver_opts/#Basic-Stepsize-Control
-    for i in 1:length(g)
+    @batch minbatch=64 for i in 1:length(g)
         @inbounds tc = t[i+1]   # Time of the current f/c-point
         @inbounds uc = u[i+1]   # Solution at the current f/c-point
         @inbounds gc = g[i]     # Residual at the current f/c-point
         u_norm = internalnorm(uc, tc)   # Norm of the state used for reltol
         e = internalnorm(gc, tc)        # Norm of the residual
         es = e / (abstol + u_norm*reltol)   # Scaled error at time step
-        r = max(r, es)
+        Threads.atomic_max!(r, es)
     end
-    return r
+    return r[]
 end
 

@@ -25,5 +25,4 @@ for dt in [1e-1, 1e-2, 5e-3]
     suite["refine!"][dt] = @benchmarkable Parareal.refine!($(setup(dt)), 1)
     suite["forward_solve!"] = @benchmarkable Parareal.forward_solve!($(setup(dt)))
     suite["perform_cycle!"][dt] = @benchmarkable Parareal.perform_cycle!($(setup(dt)), 1, 1)
-    suite["residual"][dt] = @benchmarkable Parareal.residual($(setup(dt)))
 end
