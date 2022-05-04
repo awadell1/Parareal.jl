@@ -1,0 +1,209 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\geometry{a4paper,tmargin=1in,bmargin=1in,lmargin=0.95in,rmargin=0.95in}
+
+\usepackage[sorting=none]{biblatex}
+\addbibresource{references.bib}
+
+\title{15-418/516 Final Project: Parallel-In-Time Integration}
+\author{Alexius Wadell (awadell)}
+\date{\today}
+
+\usepackage{setspace}
+\setstretch{1.5}
+
+\begin{document}
+
+\maketitle
+
+\section{Summary}
+For my project, I implemented the Multigrid Reduction in Time (MGRIT) and Parareal algorithms for solving ordinary differential equations using the threading primitives provided by the Julia Programming Language.
+I then benchmarked both algorithms on both my 2020 Macbook Pro (M1 chip), and my group's cluster (AMD EPYC 7713 64-Core Processor).
+Overall, the overhead of Julia's threading primitives limited the speedup on small problems, but for a sufficiently expensive differential, I was able to achieve notable speedups over a serial implementation on both systems.
+
+Throughout this project, I learned a lot about applying the concepts from the course to debugging and understanding the performance limitations of Julia's threading primitives.
+While the tools presented in class (OpenMP, CUDA, AVX) were extremely transparent, and thus complex to use, the primitives provided by Julia were both simple and opaque.
+Unfortunately, this made it difficult to deceiver what exactly was happening under the hood.
+
+\section{Background}
+
+Solving ordinary differential equations (ODE) numerically is generally done using by incremental stepping forwards in time.
+For example, given a differential equation (Eq.~\ref{eq:differential}) and initial conditions \( u(0) = u_0 \), we can step forward in using Euler's method (Eq.~\ref{eq:euler}).
+
+\begin{equation}\label{eq:differential}
+    \frac{du}{dt} = f(u, t)
+\end{equation}
+
+\begin{equation}\label{eq:euler}
+    u(t + dt) = u(t) + \delta t \cdot f(u(t), t)
+\end{equation}
+
+More generally, a set of discrete time points \( t = i \delta t \) for \( i = 0,1,2,\dots N\), and some serial integrator \( \Phi(u_i) = u_{i+1} \), we want to find \( u_i\) for \( i \in [1, N] \).
+One of the benefits of the MGRIT algorithm is that we can use any serial integrator for \(\Phi\).
+For example, using Euler's method, \( \Phi(u_i) = u_i + \delta t f(u_i, t) \).
+By leveraging, DifferentialEquations.jl~\cite{rackauckasDifferentialEquationsJlPerformant2017a}, I was able to easily take advantage of a wide range of serial integrators.
+For the sake of this project, I have used the \verb!Tsit5! integrator, a fourth-order Runge-Kutta method developed by \citeauthor{tsitouras2011runge}.
+
+Typically, solving an ODE is done by iteratively applying a serial integrator to set forward in time, resulting in a cost that is linear in the number of time steps.
+As each step is dependent on the last, there is no obvious method for paralleling over time.
+Instead, most work has focused on parallelization within the differential \(f\), with most intergrator suites lacking any parallel-in-time capabilities~\cite{ComparisonDifferentialEquation2017}.
+
+In this project, I have implemented two parallel-in-time algorithms for solving ODEs: Parareal\cite{lionsResolutionEDPPar2001} and MGRIT\cite{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}.
+The Parareal Algorithm, iteratively applies a ``coarse'' integrator to predict the state at some coarse time step(\( t\delta \)), and a ``fine'' integrator to refine the prediction between coarse time steps in parallel.
+This is repeated until convergence is achieved, which for \(N_c\) coarse time steps will occur in at most \(N_c\) iterations~\cite{lionsResolutionEDPPar2001}.
+As after \(N_c\) iterations, we have effectively applied the fine integrators in serial.
+Of course, in order to achieve speedup we must converge in less than \(N_c\) iterations, ideally significantly less.
+As such, the usefulness Parareal algorithm is limited to problems that require very high accuracy, but can also be well approximated using a coarse integrator.
+As such, it's implementation here was mostly as a stepping stone to MGRIT.
+
+The Multigrid Reduction in Time (MGRIT) algorithm reframes solving an ODE as solving a large diagonal system of linear equations, and is currently being developed into the XBraid package by Lawrence Livermore National Laboratory~\cite{xbraid-package}.
+Specifically, MGRIT is trying to solve the linear system of equations \( A u = g \) given by Eq.~\ref{eq:mgrit}.
+Where \( g_0 = u_0\), and \( \Phi \) is the linear realization of the serial integrator (i.e. \( \Phi(u) \equiv \Phi \cdot u \)).
+From here, the MGRIT algorithm now treats ``time'' as an additional spatial dimension, and proceeds to solve it using existing multigrid reduction methods.
+That is, instead of solving the entire system, we solve segments of the solution on a fine grid, and use the coarse grid to rectify the various sub-segments.
+
+\begin{equation}\label{eq:mgrit}
+    A u = g \to
+    \begin{bmatrix}
+    I &  &  &  \\
+    -\Phi & I & &  \\
+    & \ddots  & \ddots  &  \\
+    &  & -\Phi & I
+   \end{bmatrix}
+   \begin{bmatrix}
+   u_0 \\
+   u_1 \\
+   \vdots \\
+   u_N
+   \end{bmatrix}
+   =
+   \begin{bmatrix}
+   g_0 \\
+   g_1 \\
+   \vdots \\
+   g_N
+   \end{bmatrix}
+\end{equation}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{docs/assets/mgrit_cycle.pdf}
+    \caption{MGRIT Algorithm\label{fig:mgrit}}
+\end{figure}
+
+Practically, this is done using the algorithm outlined in Algorithm~\ref{alg:mgrit} and Figure~\ref{fig:mgrit}.
+But a high level it, we partition the time domain \(t = i \delta t\) into C-points \(i = jm\) (Blue) and F-points (White),
+where \(m\) is some coarsening factor, and is typically set to be 2.
+We then update each F-point using \(\Phi\) and stepping forward from the previous C-point, this is done in parallel and is called an F-relaxation.
+Next we update each C-point using \(\Phi\) and stepping forward from the proceeding F-point, this is also done in parallel and is called an C-relaxation.
+An additional F-relaxation is then performed completing the FCF-cycle.
+The C-points of the current level are then used to update the next level's point (Red Arrows), and we recurse into the next level.
+After updating the coarser levels, we then update the current level's C-Points based on the next level (Green Arrows) and perform a F-relaxation to update the F-points.
+This is repeated until convergence is achieved.
+
+As noted by \citeauthor{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}, the Parareal algorithm is MGRIT restricted to only 2 levels, and using a single F-relaxation, instead of the FCF-cycle used in MGRIT.
+
+\begin{algorithm}[h]
+    \caption{The MGRIT Algorithm}\label{alg:mgrit}
+    \begin{algorithmic}
+
+        \If{ Current level $l$ is the Coarsest Level}
+            \State Solve the system serially: $A_L u_L = g_L$
+        \Else
+            \State Update the current level using an FCF relaxation
+            \For{$j = 0, 1, \dots N_l/m$}  \Comment{In-Parallel F-Relaxation}
+                \State Update the F-points: $u_{i+1} = \Phi(u_i) + g_i$
+            \EndFor
+            \For{$j = 1, \dots N_l/m$}  \Comment{In-Parallel C-Relaxation}
+                \State Update the C-Points: $u_{mj} = \Phi(u_{mj-1}) + g_{mj-1}$
+            \EndFor
+            \For{$j = 0, 1, \dots N_l/m$}  \Comment{In-Parallel F-Relaxation}
+                \State Update the F-points: $u_{i+1} = \Phi(u_i) + g_i$
+            \EndFor
+
+            \State Inject the residuals of the current level into the next level: $\vec{g}_{l+1} = R_I(\vec{g}_l - A_l \vec{u}_l)$
+            \State Solve the next coarse level: $MGRIT(l+1)$
+            \State Refine this level using the coarse solution: $\vec{u}_l = \vec{u}_l + P_{\Phi} \vec{u}_{l+1})$
+        \EndIf
+    \end{algorithmic}
+\end{algorithm}
+
+\section{Approach}
+
+For this project, I used the Julia Programming Language\cite{Julia-2017} to implement the MGRIT algorithm on a Shared Memory machine using Julia's built-in threading primitives.
+I choose to implement this project using Julia largely due the strength of it's ecosystem for Differential Equations~\cite{rackauckasDifferentialEquationsJlPerformant2017a}.
+Hardware-wise, I decided to benchmark my implementation on my 2020 MacBook Pro (M1 Chip) and on the AMD EPYC 7713 64-Core Processor available via the RM nodes on the Bridges2~\cite{Bridges2} or Arjuna~\cite{ArjunaComputingCluster} computing clusters.
+Ultimately, this project was guide by my research interest (Modeling Dynamical Systems) and the types of hardware and software I typically use.
+
+\subsection{Data Structures}
+I used preallocated vectors of vectors (\verb!Vector{Vector{uType}}!) for storing the solution \(u\), residuals \(g\), and a scratch space for computing the updates to each level.
+Additionally, as some integrators \(\Phi\) require additional storage, I preallocated a separate integrator for each thread.
+From there it was largely a matter of looping over F/C-points, performing the F/C-relaxations, and then recursing into the next level.
+
+\subsection{Thread Overhead}
+One issue, that was unexpected, was the large overhead of the threading primitives.
+For example, the \verb!residual(integrator)! function in \verb!src/mgrit_algo.jl! performs the following operations:
+
+\begin{algorithm}[h!]
+    \begin{algorithmic}
+        \For \(i = 1, \dots, N\)
+            \State \( u^\prime = |u_i| \)   \Comment{Compute the norm of the solution}
+            \State \( g^\prime = |g_i| \)        \Comment{Compute the norm of the residual}
+            \State \( e = \frac{g^\prime}{\alpha + \beta u^\prime} \) \Comment{Scale based on an absolute \(\alpha\) and relative \(\beta\) tolerance}
+            \State \( r = \max(r, e) \) \Comment{Reduce to the max \(e\) over all \(i\)}
+        \EndFor
+    \end{algorithmic}
+\end{algorithm}
+
+% Results (Using first others for reference)
+% @batch: ec181521-518c-4ce8-b4ca-daccebda2ded
+% Serial: 697edebd-862c-49e9-8d74-25d6a20113f2
+% Threads(4): cb2839b2-efd2-48dd-8ad0-0c595a367c7e
+\begin{table}[h!]
+    \centering
+    \begin{tabular}[t]{lccc}
+        \(N\)   & Serial & \verb!Threads.@threads! & \verb!@batch minbatch=64! \\
+        \midrule
+        10      & 10.0 & 4000. & 9.9 \\
+        100     & 8.8  & 110.  & 8.7 \\
+        1000    & 9.0  & 51.   & 9.1 \\
+        10000   & 9.0  & 35.   & 8.9 \\
+        \bottomrule
+    \end{tabular}
+    \caption{Median time per element in nanoseconds to compute the residual. Measured on a 2020 MacBook Pro (M1) using 4 threads for the @threads and @batch examples. Overall, benchmarking suggests that the overhead of threading is significant (~10s of microseconds) and the lack of a reduction primitive effectively serializes the work.}
+    \label{tab:bench_residual}
+\end{table}
+
+I benchmarked several different methods of parallelization using BenchmarkTools.jl~\cite{BenchmarkTools.jl-2016}.
+The exact benchmarks can be found in \verb!benchmark/bench_residual.jl!.
+The Serial results were benchmarked using from a julia process with \verb!-03! enabled an no-threads, While \verb!@batch! and \verb!Threads.@threads! were benchmarked using from a julia process with \verb!-03! and 4 threads enabled.
+All benchmarks were run on a 2020 MacBook Pro.
+
+From the results tabulated in Table~\ref{tab:bench_residual}, we can see that the overhead of launching 4 threads, is negligible compared to the potential speedup provided by the additional threads.
+This isn't shocking, with a serial cost of \~10 ns or 14--19 instructions per element given the 1.4 1.9 GHz clock rate of a single core.
+Further, community benchmarks suggest that the overhead of \verb!Threads.@threads! vs.\ a serial saxpy implementation requires an input side of \(\approx 10^4\) elements for an Intel Core i7\cite{GccVsThreads2020}.
+While not an apples to apples comparison, this does confirm our observation here \verb!Threads.@threads! has an overhead on the order of tens of microseconds.
+
+This can be somewhat mitigated by using the \verb!@batch! macro provided by Polyester.jl~\cite{Polyester2022}.
+This macro avoids most of the overhead of launching tasks by batching working assigned to a single thread.
+As benchmarked with a \verb!minbatch = 64! this results in 1 task for the \(N = 10\) case, and 2 tasks for the \(N = 100\) case.
+As we can see, this does eliminated the overhead of launching 4 threads, but still provided virtual no speedup.
+Benchmarking with and without the final reduction step, \( r = \max(r, e) \), reduces the time per element to \~2 ns or roughly a 4x speedup.
+Strongly suggesting that the final reduction step is effectively serializing the work.
+Unfortunately, julia lack a threaded reduction primitive, and attempts to batch the reduction step were unfruitful.
+
+\section{}
+
+\clearpage
+\printbibliography
+
+\end{document}
+
+

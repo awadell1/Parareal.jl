@@ -1,0 +1,156 @@
+
+@inproceedings{a.barrosAnalyzingLoopScheduling2020,
+  title = {Analyzing the {{Loop Scheduling Mechanisms}} on {{Julia Multithreading}}},
+  booktitle = {2020 {{IEEE}} 32nd {{International Symposium}} on {{Computer Architecture}} and {{High Performance Computing}} ({{SBAC-PAD}})},
+  author = {A. Barros, Diana and Bentes, Cristiana},
+  date = {2020-09},
+  pages = {257--264},
+  issn = {2643-3001},
+  doi = {10.1109/SBAC-PAD49847.2020.00043},
+  abstract = {Julia is a quite recent dynamic language proposed to tackle the trade-off between productivity and efficiency. The idea is to provide the usability o flanguages such as Python or MATLAB side by sidewith the performance of C and C++. The support for multithreading programming in Julia was only released last year, and therefore still requires performance studies. In this work, we focus on the parallel loops and more specifically on the available mechanisms for assigning the loop iterations to the threads. We analyse the per-formance of the macros @spawn and @threads, used for loop parallelization. Our results show that there is no best fit solution for all cases. The use of @spawn provides better load balance for unbalanced loops with reasonably heavy iterations, but incurs in high overhead for workstealing. While @threads has low overhead, and workswell for loops with good balance among iterations.},
+  eventtitle = {2020 {{IEEE}} 32nd {{International Symposium}} on {{Computer Architecture}} and {{High Performance Computing}} ({{SBAC-PAD}})}
+}
+
+@online{alAnnouncingComposableMultithreaded,
+  title = {Announcing Composable Multi-Threaded Parallelism in {{Julia}}},
+  author = {{al}, Stefan Karpinski, Viral Shah, Alan Edelman, et, Jeff Bezanson},
+  url = {https://julialang.org/blog/2019/07/multithreading/},
+  urldate = {2022-05-03},
+  abstract = {Announcing composable multi-threaded parallelism in Julia | Software performance depends more and more on exploiting multiple processor cores....}
+}
+
+@online{ArjunaComputingCluster,
+  title = {Arjuna {{Computing Cluster}}},
+  url = {https://arjunacluster.github.io/ArjunaUsers/},
+  urldate = {2022-05-03},
+  organization = {{Arjuna}}
+}
+
+@article{BenchmarkTools.jl-2016,
+  title = {Robust Benchmarking in Noisy Environments},
+  author = {Chen, Jiahao and Revels, Jarrett},
+  date = {2016-08},
+  journaltitle = {arXiv e-prints},
+  eprint = {1608.04295},
+  eprinttype = {arxiv},
+  primaryclass = {cs.PF},
+  adsnote = {Provided by the SAO/NASA Astrophysics Data System},
+  adsurl = {https://ui.adsabs.harvard.edu/abs/2016arXiv160804295C},
+  archiveprefix = {arXiv},
+  eid = {arXiv:1608.04295}
+}
+
+@online{Bridges2,
+  title = {Bridges-2},
+  url = {https://www.psc.edu/resources/bridges-2/},
+  urldate = {2022-05-03},
+  abstract = {Bridges-2 PSC’s newest supercomputer Logins to Bridges-2 Enabled? Bridges-2 partition status Bridges-2 Bridges-2,~PSC’s newest supercomputer, began production operations in March 2021.~ It is funded by a \$10-million grant from the National Science Foundation. Bridges-2 provides transformative capability for rapidly evolving, computation-intensive and data-intensive research, creating opportunities for collaboration and convergence research. It supports both traditional …},
+  organization = {{PSC}}
+}
+
+@online{ComparisonDifferentialEquation2017,
+  title = {A {{Comparison Between Differential Equation Solver Suites In MATLAB}}, {{R}}, {{Julia}}, {{Python}}, {{C}}, {{Mathematica}}, {{Maple}}, and {{Fortran}}},
+  date = {2017-09-26T01:51:09+00:00},
+  url = {https://www.stochasticlifestyle.com/comparison-differential-equation-solver-suites-matlab-r-julia-python-c-fortran/},
+  urldate = {2022-05-03},
+  abstract = {Many times a scientist is choosing a programming language or a software for a specific purpose. For the field of scientific computing, the methods for solving differential equations are one of the important areas. What I would like to do is take the time to compare and contrast between the most popular offerings. This is a good way to reflect upon what's available and find out where there is room for improvement. I hope that by giving you the details for how each suite was put together (and the "why", as gathered from software publications) you can come to your own conclusion as to which suites are right for you. (Full disclosure, I am the lead developer of DifferentialEquations.jl. You will see at the end that DifferentialEquations.jl does offer pretty much everything from the other suite combined, but that's no accident: ... READ MORE},
+  organization = {{Stochastic Lifestyle}}
+}
+
+@online{FreeLunchFundamental,
+  title = {The {{Free Lunch Is Over}}: {{A Fundamental Turn Toward Concurrency}} in {{Software}}},
+  url = {http://www.gotw.ca/publications/concurrency-ddj.htm},
+  urldate = {2022-04-29}
+}
+
+@article{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING,
+  title = {A {{MULTIGRID-IN-TIME ALGORITHM FOR SOLVING EVOLUTION EQUATIONS IN PARALLEL}}},
+  author = {Friedhoff, S and Falgout, R and Kolev, T and Maclachlan, S and Schroder, J},
+  pages = {12}
+}
+
+@online{GccVsThreads2020,
+  title = {Gcc vs {{Threads}}.@threads vs {{Threads}}.@spawn for Large Loops - {{Specific Domains}} / {{Julia}} at {{Scale}}},
+  date = {2020-02-06T20:42:40+00:00},
+  url = {https://discourse.julialang.org/t/gcc-vs-threads-threads-vs-threads-spawn-for-large-loops/34273},
+  urldate = {2022-05-03},
+  abstract = {Hi, Schönauer vector triad again, see also  the benchmarking site of Georg Hager.  This time we compare multithreading vs. scalar, and also compare to gcc.    Here ist the generating code.  We see that for scalar performance, julia shines vs. gcc -Ofast. For multithreading performance (4 threads), the picture appears to be different. It seems that the bookkeeping overhead for handling threading is still larger compared to what we see for gcc. For small  array sizes we see this overhead problem a...},
+  organization = {{JuliaLang}}
+}
+
+@unpublished{hahnePyMGRITPythonPackage2020,
+  title = {{{PyMGRIT}}: {{A Python Package}} for the Parallel-in-Time Method {{MGRIT}}},
+  shorttitle = {{{PyMGRIT}}},
+  author = {Hahne, Jens and Friedhoff, Stephanie and Bolten, Matthias},
+  date = {2020-08-12},
+  eprint = {2008.05172},
+  eprinttype = {arxiv},
+  primaryclass = {cs},
+  url = {http://arxiv.org/abs/2008.05172},
+  urldate = {2022-04-28},
+  abstract = {In this paper, we introduce the Python framework PyMGRIT, which implements the multigrid-reduction-in-time (MGRIT) algorithm for solving the (non-)linear systems arising from the discretization of time-dependent problems. The MGRIT algorithm is a reduction-based iterative method that allows parallel-in-time simulations, i. e., calculating multiple time steps simultaneously in a simulation, by using a time-grid hierarchy. The PyMGRIT framework features many different variants of the MGRIT algorithm, ranging from different multigrid cycle types and relaxation schemes, as well as various coarsening strategies, including time-only and space-time coarsening, to using different time integrators on different levels in the multigrid hierachy. PyMGRIT allows serial runs for prototyping and testing of new approaches, as well as parallel runs using the Message Passing Interface (MPI). Here, we describe the implementation of the MGRIT algorithm in PyMGRIT and present the usage from both user and developer point of views. Three examples illustrate different aspects of the package, including pure time parallelism as well as space-time parallelism by coupling PyMGRIT with PETSc or Firedrake, which enable spatial parallelism through MPI.},
+  archiveprefix = {arXiv}
+}
+
+@article{Julia-2017,
+  title = {Julia: {{A}} Fresh Approach to Numerical Computing},
+  author = {Bezanson, Jeff and Edelman, Alan and Karpinski, Stefan and Shah, Viral B},
+  date = {2017},
+  journaltitle = {SIAM Review},
+  volume = {59},
+  number = {1},
+  pages = {65--98},
+  publisher = {{SIAM}},
+  doi = {10.1137/141000671}
+}
+
+@article{lionsResolutionEDPPar2001,
+  title = {Résolution d'EDP par un schéma en temps «pararéel »},
+  author = {Lions, Jacques-Louis and Maday, Yvon and Turinici, Gabriel},
+  date = {2001-04},
+  journaltitle = {Comptes Rendus de l'Académie des Sciences - Series I - Mathematics},
+  shortjournal = {Comptes Rendus de l'Académie des Sciences - Series I - Mathematics},
+  volume = {332},
+  number = {7},
+  pages = {661--668},
+  issn = {07644442},
+  doi = {10.1016/S0764-4442(00)01793-6}
+}
+
+@software{Polyester2022,
+  title = {Polyester},
+  date = {2022-04-10T16:42:19Z},
+  origdate = {2021-02-20T01:45:49Z},
+  url = {https://github.com/JuliaSIMD/Polyester.jl},
+  urldate = {2022-05-03},
+  abstract = {The cheapest threads you can find!},
+  organization = {{JuliaSIMD}}
+}
+
+@article{rackauckasDifferentialEquationsJlPerformant2017a,
+  title = {{{DifferentialEquations}}.Jl -- a Performant and Feature-Rich Ecosystem for Solving Differential Equations in {{Julia}}},
+  author = {Rackauckas, Christopher and Nie, Qing},
+  date = {2017},
+  journaltitle = {The Journal of Open Research Software},
+  volume = {5},
+  number = {1},
+  doi = {10.5334/jors.151}
+}
+
+@article{tsitouras2011runge,
+  title = {Runge-{{Kutta}} Pairs of Order 5 (4) Satisfying Only the First Column Simplifying Assumption},
+  author = {Tsitouras, Ch},
+  date = {2011},
+  journaltitle = {Computers \& Mathematics with Applications},
+  volume = {62},
+  number = {2},
+  pages = {770--775},
+  publisher = {{Elsevier}}
+}
+
+@misc{xbraid-package,
+  title = {{{XBraid}}: {{Parallel}} Multigrid in Time},
+  url = {http://llnl.gov/casc/xbraid}
+}
+
+
