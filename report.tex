@@ -147,7 +147,7 @@ I used preallocated vectors of vectors (\verb!Vector{Vector{uType}}!) for storin
 Additionally, as some integrators \(\Phi\) require additional storage, I preallocated a separate integrator for each thread.
 From there it was largely a matter of looping over F/C-points, performing the F/C-relaxations, and then recursing into the next level.
 
-\subsection{Thread Overhead}
+\subsection{Thread Overhead}\label{sec:thread_overhead}
 One issue, that was unexpected, was the large overhead of the threading primitives.
 For example, the \verb!residual(integrator)! function in \verb!src/mgrit_algo.jl! performs the following operations:
 
@@ -199,7 +199,92 @@ Benchmarking with and without the final reduction step, \( r = \max(r, e) \), re
 Strongly suggesting that the final reduction step is effectively serializing the work.
 Unfortunately, julia lack a threaded reduction primitive, and attempts to batch the reduction step were unfruitful.
 
-\section{}
+\subsection{Profiling}
+
+\subsection{Runtime Allocations Usage}\label{sec:runtime_allocations}
+
+\section{Results}
+
+To benchmark my implementation of MGRIT, I examined the one-dimensional diffusion equation (Eq.~\ref{eq:heat}) in-line with analysis presented by \citeauthor{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}~\cite{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}.
+This was then discretized into a one-dimensional mesh of with \(N_s\) points and spacing of \( \Delta x = \frac{1}{N_s + 1} \) using the method of lines and central finite differences.
+
+\begin{equation}\label{eq:heat}
+    \begin{align*}
+        \frac{\partial T}{\partial t} &= \frac{\partial^2 T}{\partial x^2} \\
+        T(x, 0) &= \sin(2 \pi x) \\
+        T(0, t) &= 0
+    \end{align*}
+\end{equation}
+
+As the resulting system is only stable for \(\Delta t < \frac{1}{2} \Delta x^2\), I set the time step to be at least 8 times smaller then required.
+This allows MGRIT to have 3 levels of temporal refinement while remaining stable at all levels.
+In order to keep the total amount of work constant, regardless of \(N_s\), I integrated the system from \(t = 0\) to \(256 \Delta t\).
+Overall, this boils down to performing a sparse matrix-vector product, with a compute cost \(\mathcal{O}(N_s) \) per evaluation of the differential.
+I then swept over both the problem size \(N_s\), and the number of threads used \(N_t\), and recorded the median runtime over 5 runs for the MGRIT, Parareal and serial (Tsit5) integrators.
+Due to problem size, these benchmarks were only performed using on the AMD EPYC 7713 64-Core Processor system provided by the Arjuna Cluster.
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\linewidth]{docs/assets/speedup_serial.pdf}
+    \caption{Speedup of the MGRIT and Parareal Integrators relative to their performance with a single thread}
+    \label{fig:heat_bench}
+\end{figure}
+
+As shown by Figure~\ref{fig:heat_bench}, both the MGRIT and Parareal integrators do show moderate speedups as the number of threads increases.
+Due to the high cost of launching tasks using Julia's primitives (Section~\ref{sec:thread_overhead}), our speedup is highly dependent on problem size \(N_s\).
+This is expected as the work per differential must be sufficiently large to cover the cost of launching tasks.
+For MGRIT, it appears that \(N_s \geq 2^{16}\) is sufficient to support 64 threads as speedup continues to increase with the number of threads.
+However for smaller problems \(N_s = 2^{14}\), above \~16 threads, the overhead of the additional threads outweighs the additional computing power.
+Unfortunately, for small problems (\(N_s \leq 2^{12}\), the overhead of the threads virtually eliminates any speedup.
+
+Conversely, Parareal is able to achieve a speedup over it \(N_t = 1\) performance for small problems \(N_s \leq 2^{16}\), but not for larger problems.
+This is likely due to the reduced cost of launching tasks.
+While MGRIT uses 4 temporal meshes, Parareal uses only 2.
+Thus for Parareal the work per time step is \( \mathcal{O}(N_s + N_s / N_t)\).
+Conversely, for MGRIT, with 3 levels the work per time step is  \( \mathcal{O}(N_s + N_s/2 + N_s/4 + N_2/8) \to \mathcal{O}(\frac{15}{8}N_s)\); or in the limit of full refinement \( \mathcal{O}(2 N_s) \).
+Consequently, the work per thread is \( \mathcal{O}(N_t^{-2})\) for Parareal, and \( \mathcal{O}(N_t^{-1})\) for MGRIT.
+Thus the hump shaped speedup curve of Parareal (Figure~\ref{fig:heat_bench}) is due to the cost of launching tasks.
+A low thread counts, there lots of work to do, and the overhead of launching tasks is negligible.
+But as the number of threads increases, work per thread rapidly decreases \(\propoto N_s^{-2}\) causing the sharp decline in speedup.
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{docs/assets/speedup_tsit5.pdf}
+    \caption{Speedup of the MGRIT and Parareal Integrators relative to the performance of the Tsit5 integrator}
+    \label{fig:heat_bench_tsit5}
+\end{figure}
+
+Both the MGRIT and Parareal algorithms were able to beat out the performance of the Tsit5 provided by DifferentialEquations.jl (Figure~\ref{fig:heat_bench_tsit5}).
+This is a pleasant surprise, as the Tsit5 algorithm is DifferentialEquation.jl's recommended integrator for non-stiff problems\footnote{For the MATLAB Fans, while not exactly \verb!ode45!, it is the recommended equivalent\cite{ODESolversDifferentialEquations}}.
+Further, in benchmarks against other packages Tsit5 and DifferentialEquations.jl tend to beat out offerings~\cite{ODESolverMultiLanguage}.
+That is, matching, let alone beating, the performance of the Tsit5 algorithm suggest that the parallel-in-time integration provided here provides a not insignificant value-add.
+
+It should be noted that the performance of the Parareal over Tsit5 is likely in part due to the coarse integrator being allowed to make adaptive steps.
+In effect this drastically reduces the cost of the coarse integrator, while retaining all of the benefits of the fine integrator.
+Additionally, the Tsit5 integrator does save significantly more information (For example, it provides an accurate interpolant of the results), as well as suffering from run-time memory allocations as it does not pre-allocate space for the results.
+
+
+\section{Future Work}
+
+Given the results presented (Figure~\ref{fig:heat_bench}&\ref{fig:heat_bench_tsit5}), a Julia implementation of the MGRIT algorithm appears to be a viable contender for adding parallelism to the differential equation solver.
+However, as noted above (Section~\ref{sec:thread_overhead}), the overhead of launching tasks is significant.
+My choice to use Julia's threading primitives instead of it's distributed computing ones or an external package (i.e. MPI.jl) was largely motived by my use case: Accelerating solves on my personal laptop.
+However, given the overhead of threads, and the tendency of MGRIT to require immense parallelism~\cite{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}, a message passing approach is likely to provide improved performance for sufficiently numerous computing resources.
+This would also be in line with the approach taken by other implementations of the MGRIT algorithm~\cite{xbraid-package, hahnePyMGRITPythonPackage2020}.
+
+Finally, as noted above (Section~\ref{sec:runtime_allocations}), my current implementation suffers from runtime memory allocations when resetting the serial integrators.
+As the serial integrators provided by DifferentialEquations.jl are designed for serial solving of ODEs, they are not optimized for repeatedly being reset to a new initial condition.
+Specifically, both the \verb!Euler! and \verb!Tsit5! integrators appear to re-allocate their internal caches when reset.
+Further, performance could be achieved by eliminating these dynamic memory allocations.
+
+Finally, while not pursued here, implementing the MGRIT algorithm on the GPU could provide access to the numerous execution units typically required~\cite{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}.
+This concept was initially floated during my milestone update report, as I was not seeing any notable performance gains at the time.
+However, by chasing down memory allocations and switching after implementing MGRIT, I was able to see a speedup a lower thread counts, thus eliminating the need for the massive (\(>2^{12}\) processor counts suggested by \citeauthor{friedhoffMULTIGRIDINTIMEALGORITHMSOLVING}, was no longer required.
+
+
+\section{Work Distribution}
+
+As this was a solo group project, all work was completed by Alex Wadell.
 
 \clearpage
 \printbibliography
