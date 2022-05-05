@@ -7,6 +7,9 @@ This is highly applicable when solving massive Partial Differential Equations (P
 This project aims to provide a MGRIT solver for a shared memory parallel environment using [Julia's threading facilities][julia-multithreading].
 
 
+### Final Report and Presentation
+
+Please see the linked documents for the [final report](docs/report.pdf) and [presentation](https://drive.google.com/file/d/1McS9cDmrtBoXwlumR3d98veqH1H8wNuN/view?usp=sharing).
 ## Background
 
 MGRIT works by solving iteratively solving the system on a increasingly finer temporal grid, in parallel.
@@ -146,7 +149,7 @@ Although, for a smaller systems the cross-over point should occur at a lower pro
 ### Goal Progress
 
 - [x] Functional Parareal solver (75% Goal)
-- [ ] Functional MGRIT solver (100% Goal)
+- [X] Functional MGRIT solver (100% Goal)
 - [ ] MGRIT solver with dynamic trade-off between in-time and in-differential parallelism (125% Goal)
 
 I am on track for delivering my 100% goal of an MGRIT solver, I am concerned about reaching the 125% goal.
@@ -157,13 +160,15 @@ To that end, I want to move towards using GPUs to accelerate the fine solvers, w
 ## Schedule
 
 - [x] Initial implementation of Parareal using Julia (1/11)
-- [ ] Build out benchmarking suite and eliminate allocations in the fine solvers (4/14)
-- [ ] Implement MGRIT solver (4/18)
-- [ ] Initial GPU Accelerated Implementation (4/21)
-- [ ] Refined GPU Accelerated Implementation (4/25)
-- [ ] Initial Benchmark on Nvidia A100s vs. AMD EPYC CPUs (4/27)
-- [ ] Document in Report (4/29)
-- [ ] Presentation of final results (5/5)
+- [x] Build out benchmarking suite and eliminate allocations in the fine solvers (4/14)
+- [x] Implement MGRIT solver (4/18)
+- [ ] ~~Initial GPU Accelerated Implementation (4/21)~~
+- [ ] ~~Refined GPU Accelerated Implementation (4/25)~~
+- [x] Initial Benchmark on ~~Nvidia A100s vs.~~ AMD EPYC CPUs (4/27)
+- [x] Document in Report (4/5)
+- [x] Presentation of final results (5/5)
+
+As MGRIT was able to archive >1 speedup over serial algorithms, I have elected to not purse the strech goal of a GPU accelerated implementation.
 ### References
 
 - [A Multigrid-in-Time Algorithm for Solving Evolving Equation in Parallel][MGRIT]

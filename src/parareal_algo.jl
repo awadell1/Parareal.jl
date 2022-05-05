@@ -23,7 +23,7 @@ function PararealIntegrator{IIP, uType, tType}(u, t, fine::Vector{F}, coarse::C,
 end
 
 function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlgo;
-    coarse_steps = 1, coarse_maxsteps = 20, dt_coarse=nothing,
+    coarse_steps = 1, coarse_maxsteps = 20, dt_coarse=nothing, dt=1e-3,
     save_start=true, save_end=true, save_intervals=false,
     abstol=1e-6, reltol=1e-3,
     kwargs...
@@ -53,16 +53,17 @@ function DiffEqBase.__init(prob::ODEProblem{uType, tType, IIP}, alg::PararealAlg
         save_everystep=false,
         save_start=false,
         calck = false,
-
     )
 
     # Setup fine integrators
     fine = map(1:alg.intervals) do i
         prob_interval = remake(prob; tspan=(t[i], t[i+1]))
         init(prob_interval, alg.fine;
+            dt,
             save_start= i==1 ? save_start : save_intervals,
             save_end = i == alg.intervals ? save_end : save_intervals,
             save_everystep=false, dense=false,
+            adaptive=false,
             kwargs...
         )
     end
