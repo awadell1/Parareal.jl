@@ -7,6 +7,9 @@ This is highly applicable when solving massive Partial Differential Equations (P
 This project aims to provide a MGRIT solver for a shared memory parallel environment using [Julia's threading facilities][julia-multithreading].
 
 
+### Final Report and Presentation
+
+Please see the linked documents for the [final report](docs/report.pdf) and [presentation](https://drive.google.com/file/d/1McS9cDmrtBoXwlumR3d98veqH1H8wNuN/view?usp=sharing).
 ## Background
 
 MGRIT works by solving iteratively solving the system on a increasingly finer temporal grid, in parallel.
