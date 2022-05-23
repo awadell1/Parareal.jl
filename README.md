@@ -9,7 +9,8 @@ This project aims to provide a MGRIT solver for a shared memory parallel environ
 
 ### Final Report and Presentation
 
-Please see the linked documents for the [final report](docs/report.pdf) and [presentation](https://drive.google.com/file/d/1McS9cDmrtBoXwlumR3d98veqH1H8wNuN/view?usp=sharing).
+Please see the linked documents for the [final report](docs/report.pdf).
+
 ## Background
 
 MGRIT works by solving iteratively solving the system on a increasingly finer temporal grid, in parallel.
